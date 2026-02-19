@@ -2,6 +2,7 @@
 import { onMounted } from "vue";
 import AppTitleBar from "./components/AppTitleBar.vue";
 import IdeDialog from "./components/IdeDialog.vue";
+import LaunchProjectDialog from "./components/LaunchProjectDialog.vue";
 import ProjectDialog from "./components/ProjectDialog.vue";
 import ProjectGroupList from "./components/ProjectGroupList.vue";
 import ProjectToolbar from "./components/ProjectToolbar.vue";
@@ -18,6 +19,9 @@ const {
   errorMessage,
   showProjectDialog,
   showIdeDialog,
+  showLaunchDialog,
+  launchProjectTarget,
+  launchSelectedIdeIds,
   searchText,
   favoritesOnly,
   projectForm,
@@ -27,12 +31,13 @@ const {
   chooseProjectFolders,
   createProject,
   createIde,
+  autoScanIdes,
   onRemoveProject,
   onToggleFavorite,
-  onLaunchProject,
+  openLaunchDialog,
+  closeLaunchDialog,
+  confirmLaunchProject,
   onOpenFolder,
-  ideNameById,
-  selectedIdeId,
 } = manager;
 
 function formatLastModified(value: string | null) {
@@ -59,6 +64,7 @@ onMounted(async () => {
       @drag-start="startWindowDrag"
       @open-project-dialog="showProjectDialog = true"
       @open-ide-dialog="showIdeDialog = true"
+      @scan-ides="autoScanIdes"
     />
 
     <section class="content-pane">
@@ -76,11 +82,10 @@ onMounted(async () => {
         v-else
         :projects="filteredProjects"
         :ides="ides"
-        :selected-ide-label="(project) => ideNameById(selectedIdeId(project))"
         :format-last-modified="formatLastModified"
         @toggle-favorite="onToggleFavorite"
         @remove="onRemoveProject"
-        @launch="onLaunchProject"
+        @launch="openLaunchDialog"
         @open-folder="onOpenFolder"
       />
     </section>
@@ -105,6 +110,15 @@ onMounted(async () => {
       @update:category="ideForm.category = $event"
       @update:priority="ideForm.priority = $event"
     />
+
+    <LaunchProjectDialog
+      :visible="showLaunchDialog"
+      :project="launchProjectTarget"
+      :ides="ides"
+      :selected-ide-ids="launchSelectedIdeIds"
+      @close="closeLaunchDialog"
+      @confirm="confirmLaunchProject"
+      @update:selected-ide-ids="launchSelectedIdeIds = $event"
+    />
   </main>
 </template>
-

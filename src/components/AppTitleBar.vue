@@ -22,6 +22,11 @@ function openIde() {
   emit("openIdeDialog");
 }
 
+function scanIdes() {
+  showQuickAdd.value = false;
+  emit("scanIdes");
+}
+
 const emit = defineEmits<{
   toggleTheme: [];
   minimize: [];
@@ -30,6 +35,7 @@ const emit = defineEmits<{
   dragStart: [event: MouseEvent];
   openProjectDialog: [];
   openIdeDialog: [];
+  scanIdes: [];
 }>();
 </script>
 
@@ -49,9 +55,17 @@ const emit = defineEmits<{
         <div v-if="showQuickAdd" class="quick-add-panel">
           <button class="quick-add-item" @click="openProject">添加项目</button>
           <button class="quick-add-item" @click="openIde">添加 IDE</button>
+          <button class="quick-add-item primary" @click="scanIdes">扫描 IDE</button>
         </div>
       </div>
-      <button class="icon-pill" @click="$emit('toggleTheme')">{{ theme === "light" ? "深" : "浅" }}</button>
+      <button
+        class="icon-pill"
+        :aria-label="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"
+        :title="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"
+        @click="$emit('toggleTheme')"
+      >
+        {{ theme === "light" ? "☾" : "☀" }}
+      </button>
       <button class="icon-pill" @click="$emit('minimize')">-</button>
       <button class="icon-pill" @click="$emit('maximize')">□</button>
       <button class="icon-pill danger" @click="$emit('close')">×</button>

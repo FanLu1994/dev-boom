@@ -2,12 +2,14 @@ import { computed, ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   addIde,
+  addDetectedIdes,
   getIdes,
   getProjects,
   launchProject,
   openInFileManager,
   removeProject,
   scanProjects as scanProjectsApi,
+  setProjectIdePreferences,
   toggleProjectFavorite,
 } from "../api/projectApi";
 import type { IdeConfig, IdeForm, Project, ProjectForm } from "../types/project";
@@ -39,6 +41,9 @@ export function useProjectManager() {
 
   const showProjectDialog = ref(false);
   const showIdeDialog = ref(false);
+  const showLaunchDialog = ref(false);
+  const launchProjectTarget = ref<Project | null>(null);
+  const launchSelectedIdeIds = ref<string[]>([]);
 
   const searchText = ref("");
   const favoritesOnly = ref(false);
@@ -122,6 +127,21 @@ export function useProjectManager() {
     }
   }
 
+  async function autoScanIdes() {
+    try {
+      const added = await addDetectedIdes();
+      const count = Array.isArray(added) ? added.length : 0;
+      if (count > 0) {
+        await loadData();
+        errorMessage.value = `成功添加 ${count} 个 IDE`;
+      } else {
+        errorMessage.value = "未发现新的 IDE";
+      }
+    } catch (error) {
+      setError("扫描 IDE 失败", error);
+    }
+  }
+
   async function onRemoveProject(projectId: string) {
     try {
       await removeProject(projectId);
@@ -140,9 +160,31 @@ export function useProjectManager() {
     }
   }
 
-  async function onLaunchProject(project: Project, ideId?: string) {
+  function openLaunchDialog(project: Project) {
+    launchProjectTarget.value = project;
+    const preferred = project.metadata.idePreferences.filter((id) => ides.value.some((ide) => ide.id === id));
+    launchSelectedIdeIds.value = preferred.length > 0 ? preferred : ides.value.slice(0, 1).map((ide) => ide.id);
+    showLaunchDialog.value = true;
+  }
+
+  function closeLaunchDialog() {
+    showLaunchDialog.value = false;
+    launchProjectTarget.value = null;
+    launchSelectedIdeIds.value = [];
+  }
+
+  async function confirmLaunchProject() {
+    const project = launchProjectTarget.value;
+    if (!project) return;
+    if (launchSelectedIdeIds.value.length === 0) {
+      errorMessage.value = "请至少选择一个 IDE";
+      return;
+    }
+
     try {
-      await launchProject(project.id, ideId);
+      await setProjectIdePreferences(project.id, launchSelectedIdeIds.value);
+      await launchProject(project.id);
+      closeLaunchDialog();
       await loadData();
     } catch (error) {
       setError("启动失败", error);
@@ -157,20 +199,15 @@ export function useProjectManager() {
     }
   }
 
-  function ideNameById(id: string) {
-    return ides.value.find((x) => x.id === id)?.name ?? "未配置";
-  }
-
-  function selectedIdeId(project: Project) {
-    return project.metadata.idePreferences[0] ?? ides.value[0]?.id ?? "";
-  }
-
   return {
     ides,
     loading,
     errorMessage,
     showProjectDialog,
     showIdeDialog,
+    showLaunchDialog,
+    launchProjectTarget,
+    launchSelectedIdeIds,
     searchText,
     favoritesOnly,
     projectForm,
@@ -180,11 +217,12 @@ export function useProjectManager() {
     chooseProjectFolders,
     createProject,
     createIde,
+    autoScanIdes,
     onRemoveProject,
     onToggleFavorite,
-    onLaunchProject,
+    openLaunchDialog,
+    closeLaunchDialog,
+    confirmLaunchProject,
     onOpenFolder,
-    ideNameById,
-    selectedIdeId,
   };
 }

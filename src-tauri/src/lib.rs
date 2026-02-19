@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    env,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -10,6 +11,18 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 use uuid::Uuid;
+
+#[cfg(target_os = "windows")]
+use windows::{
+    core::PCWSTR,
+    Win32::Graphics::Gdi::{
+        DeleteObject, GetDC, ReleaseDC, CreateCompatibleDC, SelectObject, DeleteDC,
+        CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    },
+    Win32::UI::Shell::{SHGetFileInfoW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES},
+    Win32::UI::WindowsAndMessaging::{DestroyIcon, HICON},
+    Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -115,6 +128,463 @@ fn file_mtime_iso(path: &str) -> Option<String> {
     let modified = metadata.modified().ok()?;
     let datetime: chrono::DateTime<Utc> = modified.into();
     Some(datetime.to_rfc3339())
+}
+
+#[derive(Debug, Clone)]
+struct IdeDefinition {
+    id: &'static str,
+    name: &'static str,
+    executable_name: &'static str,
+    paths: Vec<&'static str>,
+    args_template: &'static str,
+    category: IdeCategory,
+    priority: i32,
+}
+
+fn get_known_ides() -> Vec<IdeDefinition> {
+    vec![
+        IdeDefinition {
+            id: "vscode",
+            name: "VSCode",
+            executable_name: "Code.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
+                "%USERPROFILE%\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+                "C:\\Program Files\\Microsoft VS Code\\Code.exe",
+                "C:\\Program Files (x86)\\Microsoft VS Code\\Code.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 100,
+        },
+        IdeDefinition {
+            id: "cursor",
+            name: "Cursor",
+            executable_name: "cursor.exe",
+            paths: vec![
+                "%USERPROFILE%\\AppData\\Local\\cursor\\cursor.exe",
+                "%LOCALAPPDATA%\\Programs\\cursor\\cursor.exe",
+                "C:\\Program Files\\cursor\\cursor.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 110,
+        },
+        IdeDefinition {
+            id: "webstorm",
+            name: "WebStorm",
+            executable_name: "webstorm64.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\WebStorm\\bin\\webstorm64.exe",
+                "C:\\Program Files\\JetBrains\\WebStorm\\bin\\webstorm64.exe",
+                "C:\\Program Files (x86)\\JetBrains\\WebStorm\\bin\\webstorm64.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 120,
+        },
+        IdeDefinition {
+            id: "intellij",
+            name: "IntelliJ IDEA",
+            executable_name: "idea64.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\IntelliJ IDEA\\bin\\idea64.exe",
+                "C:\\Program Files\\JetBrains\\IntelliJ IDEA\\bin\\idea64.exe",
+                "C:\\Program Files (x86)\\JetBrains\\IntelliJ IDEA\\bin\\idea64.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 121,
+        },
+        IdeDefinition {
+            id: "pycharm",
+            name: "PyCharm",
+            executable_name: "pycharm64.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\PyCharm\\bin\\pycharm64.exe",
+                "C:\\Program Files\\JetBrains\\PyCharm\\bin\\pycharm64.exe",
+                "C:\\Program Files (x86)\\JetBrains\\PyCharm\\bin\\pycharm64.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 122,
+        },
+        IdeDefinition {
+            id: "clion",
+            name: "CLion",
+            executable_name: "clion64.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\CLion\\bin\\clion64.exe",
+                "C:\\Program Files\\JetBrains\\CLion\\bin\\clion64.exe",
+                "C:\\Program Files (x86)\\JetBrains\\CLion\\bin\\clion64.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 123,
+        },
+        IdeDefinition {
+            id: "goland",
+            name: "GoLand",
+            executable_name: "goland64.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\GoLand\\bin\\goland64.exe",
+                "C:\\Program Files\\JetBrains\\GoLand\\bin\\goland64.exe",
+                "C:\\Program Files (x86)\\JetBrains\\GoLand\\bin\\goland64.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 124,
+        },
+        IdeDefinition {
+            id: "rider",
+            name: "Rider",
+            executable_name: "rider64.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\JetBrains\\Rider\\bin\\rider64.exe",
+                "C:\\Program Files\\JetBrains\\Rider\\bin\\rider64.exe",
+                "C:\\Program Files (x86)\\JetBrains\\Rider\\bin\\rider64.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 125,
+        },
+        IdeDefinition {
+            id: "fleet",
+            name: "Fleet",
+            executable_name: "fleet.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Programs\\Fleet\\bin\\fleet.exe",
+                "C:\\Program Files\\JetBrains\\Fleet\\bin\\fleet.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 126,
+        },
+        IdeDefinition {
+            id: "android-studio",
+            name: "Android Studio",
+            executable_name: "studio64.exe",
+            paths: vec![
+                "%LOCALAPPDATA%\\Android\\android-studio\\bin\\studio64.exe",
+                "C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe",
+                "C:\\Program Files (x86)\\Android\\Android Studio\\bin\\studio64.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Gui,
+            priority: 127,
+        },
+        IdeDefinition {
+            id: "neovim",
+            name: "Neovim",
+            executable_name: "nvim",
+            paths: vec![
+                "%LOCALAPPDATA%\\nvim\\bin\\nvim.exe",
+                "C:\\Program Files\\Neovim\\bin\\nvim.exe",
+                "C:\\tools\\neovim\\bin\\nvim.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Cli,
+            priority: 200,
+        },
+        IdeDefinition {
+            id: "vim",
+            name: "Vim",
+            executable_name: "vim",
+            paths: vec![
+                "C:\\Program Files\\Vim\\vim90\\vim.exe",
+                "C:\\Program Files (x86)\\Vim\\vim90\\vim.exe",
+            ],
+            args_template: "{projectPath}",
+            category: IdeCategory::Cli,
+            priority: 201,
+        },
+        IdeDefinition {
+            id: "claude",
+            name: "Claude CLI",
+            executable_name: "claude",
+            paths: vec![],
+            args_template: "",
+            category: IdeCategory::Cli,
+            priority: 210,
+        },
+        IdeDefinition {
+            id: "codex",
+            name: "Codex CLI",
+            executable_name: "codex",
+            paths: vec![],
+            args_template: "",
+            category: IdeCategory::Cli,
+            priority: 211,
+        },
+        IdeDefinition {
+            id: "opencode",
+            name: "OpenCode CLI",
+            executable_name: "opencode",
+            paths: vec![],
+            args_template: "",
+            category: IdeCategory::Cli,
+            priority: 212,
+        },
+    ]
+}
+
+fn expand_env_path(path: &str) -> Option<String> {
+    let mut result = path.to_string();
+
+    // 手动扩展环境变量
+    if result.contains("%LOCALAPPDATA%") {
+        if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
+            result = result.replace("%LOCALAPPDATA%", &local_app_data);
+        }
+    }
+    if result.contains("%USERPROFILE%") {
+        if let Ok(user_profile) = env::var("USERPROFILE") {
+            result = result.replace("%USERPROFILE%", &user_profile);
+        }
+    }
+    if result.contains("%APPDATA%") {
+        if let Ok(app_data) = env::var("APPDATA") {
+            result = result.replace("%APPDATA%", &app_data);
+        }
+    }
+
+    Some(result)
+}
+
+fn find_executable_in_known_paths(paths: &[&str]) -> Option<PathBuf> {
+    paths
+        .iter()
+        .filter_map(|p| expand_env_path(p))
+        .map(PathBuf::from)
+        .find(|p| p.exists())
+}
+
+#[cfg(target_os = "windows")]
+fn find_executable_in_path(command_name: &str) -> Option<PathBuf> {
+    let mut candidates = vec![command_name.to_string()];
+    if command_name.ends_with(".exe") {
+        candidates.push(command_name.trim_end_matches(".exe").to_string());
+    } else if !command_name.contains('.') {
+        candidates.push(format!("{command_name}.exe"));
+        candidates.push(format!("{command_name}.cmd"));
+        candidates.push(format!("{command_name}.bat"));
+    }
+
+    for candidate in candidates {
+        let output = Command::new("where.exe").arg(&candidate).output().ok()?;
+        if !output.status.success() {
+            continue;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = stdout.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
+        if let Some(best) = lines.iter().find(|line| {
+            let lower = line.to_ascii_lowercase();
+            lower.ends_with(".cmd") || lower.ends_with(".exe") || lower.ends_with(".bat")
+        }) {
+            return Some(PathBuf::from(best));
+        }
+        if let Some(first) = lines.first() {
+            return Some(PathBuf::from(first));
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_executable_in_path(command_name: &str) -> Option<PathBuf> {
+    let output = Command::new("which").arg(command_name).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(PathBuf::from)
+}
+
+fn resolve_ide_executable(ide_def: &IdeDefinition) -> Option<PathBuf> {
+    find_executable_in_known_paths(&ide_def.paths)
+        .or_else(|| find_executable_in_path(ide_def.executable_name))
+}
+
+#[cfg(target_os = "windows")]
+fn extract_icon_from_exe(exe_path: &Path) -> Option<String> {
+    use windows::Win32::UI::Shell::SHFILEINFOW;
+
+    let path_str = exe_path.to_string_lossy().to_string();
+    if !exe_path.exists() {
+        return None;
+    }
+
+    unsafe {
+        let mut shfi = SHFILEINFOW::default();
+        let path_wide: Vec<u16> = path_str.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let result = SHGetFileInfoW(
+            PCWSTR(path_wide.as_ptr()),
+            FILE_FLAGS_AND_ATTRIBUTES(0),
+            Some(&mut shfi),
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
+        );
+
+        if result == 0 {
+            return None;
+        }
+
+        if shfi.hIcon == HICON::default() {
+            return None;
+        }
+
+        let icon = extract_hicon_to_png(shfi.hIcon)?;
+        DestroyIcon(shfi.hIcon);
+
+        Some(format!("data:image/png;base64,{}", icon))
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
+    use image::ImageEncoder;
+    use image::codecs::png::PngEncoder;
+    use std::ptr::null_mut;
+
+    let hdc = GetDC(None);
+    if hdc.is_invalid() {
+        return None;
+    }
+
+    let mem_dc = CreateCompatibleDC(hdc);
+    if mem_dc.is_invalid() {
+        ReleaseDC(None, hdc);
+        return None;
+    }
+
+    let mut icon_info = windows::Win32::UI::WindowsAndMessaging::ICONINFO::default();
+    if windows::Win32::UI::WindowsAndMessaging::GetIconInfo(hicon, &mut icon_info).is_ok() {
+        let width = (if icon_info.xHotspot > 0 { icon_info.xHotspot as i32 } else { 32 }).clamp(1, 512);
+        let height = (if icon_info.yHotspot > 0 { icon_info.yHotspot as i32 } else { 32 }).clamp(1, 512);
+
+        let mut ppv_bits: *mut std::ffi::c_void = null_mut();
+
+        let mut bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: height * 2, // DIB section height is doubled for icons
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [Default::default()],
+        };
+
+        let hbitmap = match CreateDIBSection(
+            mem_dc,
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut ppv_bits,
+            None,
+            0,
+        ) {
+            Ok(v) => v,
+            Err(_) => {
+                if !icon_info.hbmColor.is_invalid() {
+                    let _ = DeleteObject(icon_info.hbmColor);
+                }
+                if !icon_info.hbmMask.is_invalid() {
+                    let _ = DeleteObject(icon_info.hbmMask);
+                }
+                DeleteDC(mem_dc);
+                ReleaseDC(None, hdc);
+                return None;
+            }
+        };
+
+        if ppv_bits.is_null() || width <= 0 || height <= 0 {
+            let _ = DeleteObject(hbitmap);
+            if !icon_info.hbmColor.is_invalid() {
+                let _ = DeleteObject(icon_info.hbmColor);
+            }
+            if !icon_info.hbmMask.is_invalid() {
+                let _ = DeleteObject(icon_info.hbmMask);
+            }
+            DeleteDC(mem_dc);
+            ReleaseDC(None, hdc);
+            return None;
+        }
+
+        let old_bitmap = SelectObject(mem_dc, hbitmap);
+        let _ = windows::Win32::UI::WindowsAndMessaging::DrawIconEx(
+            mem_dc,
+            0,
+            0,
+            hicon,
+            width,
+            height,
+            0,
+            None,
+            windows::Win32::UI::WindowsAndMessaging::DI_NORMAL,
+        );
+
+        // 先复制位图内存，再释放 GDI 对象，避免 UAF 崩溃
+        let pixels_len = (width * height) as usize;
+        let pixels_slice = std::slice::from_raw_parts(ppv_bits as *const u32, pixels_len);
+        let mut rgba_pixels: Vec<u8> = Vec::with_capacity(pixels_len * 4);
+        for &pixel in pixels_slice {
+            let b = (pixel & 0xFF) as u8;
+            let g = ((pixel >> 8) & 0xFF) as u8;
+            let r = ((pixel >> 16) & 0xFF) as u8;
+            let a = ((pixel >> 24) & 0xFF) as u8;
+            rgba_pixels.push(r);
+            rgba_pixels.push(g);
+            rgba_pixels.push(b);
+            rgba_pixels.push(a);
+        }
+
+        let _ = SelectObject(mem_dc, old_bitmap);
+        let _ = DeleteObject(hbitmap);
+        if !icon_info.hbmColor.is_invalid() {
+            let _ = DeleteObject(icon_info.hbmColor);
+        }
+        if !icon_info.hbmMask.is_invalid() {
+            let _ = DeleteObject(icon_info.hbmMask);
+        }
+
+        let mut png_bytes = Vec::new();
+        let encoder = PngEncoder::new(&mut png_bytes);
+        if encoder
+            .write_image(
+                &rgba_pixels,
+                width as u32,
+                height as u32,
+                image::ExtendedColorType::Rgba8,
+            )
+            .is_ok()
+        {
+            DeleteDC(mem_dc);
+            ReleaseDC(None, hdc);
+            use base64::Engine;
+            return Some(base64::engine::general_purpose::STANDARD.encode(&png_bytes));
+        }
+    }
+
+    DeleteDC(mem_dc);
+    ReleaseDC(None, hdc);
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn extract_icon_from_exe(_exe_path: &Path) -> Option<String> {
+    None
 }
 
 fn default_ides() -> Vec<IdeConfig> {
@@ -497,6 +967,124 @@ fn remove_ide(ide_id: String, state: State<'_, AppState>) -> Result<(), String> 
 }
 
 #[tauri::command]
+fn scan_ides(state: State<'_, AppState>) -> Result<Vec<IdeConfig>, String> {
+    let known_ides = get_known_ides();
+    let mut detected = vec![];
+
+    for ide_def in known_ides {
+        // 检查是否已存在
+        let store = state.store.lock().expect("store lock poisoned");
+        let already_exists = store.ides.iter().any(|i| i.id == ide_def.id);
+        drop(store);
+
+        if already_exists {
+            continue;
+        }
+
+        // 查找可执行文件：先固定路径，再从 PATH 命令发现
+        let exe_path = resolve_ide_executable(&ide_def);
+
+        if let Some(path) = exe_path {
+            let icon = extract_icon_from_exe(&path);
+
+            detected.push(IdeConfig {
+                id: ide_def.id.to_string(),
+                name: ide_def.name.to_string(),
+                executable: path.to_string_lossy().to_string(),
+                args_template: ide_def.args_template.to_string(),
+                icon,
+                category: ide_def.category.clone(),
+                priority: ide_def.priority,
+                auto_detected: true,
+            });
+        }
+    }
+
+    Ok(detected)
+}
+
+#[tauri::command]
+fn add_detected_ides(state: State<'_, AppState>) -> Result<Vec<IdeConfig>, String> {
+    let detected_ides = scan_ides(state.clone())?;
+
+    if detected_ides.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut store = state.store.lock().expect("store lock poisoned");
+    let mut added = vec![];
+
+    for ide in detected_ides {
+        // 再次检查是否已存在（防止竞态条件）
+        if !store.ides.iter().any(|i| i.id == ide.id) {
+            store.ides.push(ide.clone());
+            added.push(ide);
+        }
+    }
+
+    if !added.is_empty() {
+        save_store(&state.file_path, &store)?;
+    }
+
+    Ok(added)
+}
+
+#[tauri::command]
+fn set_project_ide_preferences(
+    project_id: String,
+    ide_ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<Project, String> {
+    let mut store = state.store.lock().expect("store lock poisoned");
+    let valid_ide_ids: HashSet<&str> = store.ides.iter().map(|i| i.id.as_str()).collect();
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut normalized: Vec<String> = ide_ids
+        .into_iter()
+        .filter(|id| valid_ide_ids.contains(id.as_str()))
+        .filter(|id| seen.insert(id.clone()))
+        .collect();
+    normalized.truncate(3);
+
+    let project = store
+        .projects
+        .iter_mut()
+        .find(|p| p.id == project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+
+    project.metadata.ide_preferences = normalized;
+    let updated = project.clone();
+    save_store(&state.file_path, &store)?;
+    Ok(updated)
+}
+
+fn launch_with_ide(project: &Project, ide: &IdeConfig) -> Result<(), String> {
+    let args = expand_args(&ide.args_template, project);
+    let mut launched = false;
+
+    if ide.category == IdeCategory::Cli || ide.category == IdeCategory::Terminal {
+        #[cfg(target_os = "windows")]
+        {
+            let mut wt = Command::new("wt");
+            wt.arg("-d").arg(&project.path).arg(&ide.executable).args(&args);
+            if wt.spawn().is_ok() {
+                launched = true;
+            }
+        }
+    }
+
+    if !launched {
+        Command::new(&ide.executable)
+            .current_dir(&project.path)
+            .args(args)
+            .spawn()
+            .map_err(|e| format!("启动 {} 失败: {e}", ide.name))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 fn reorder_projects(project_ids: Vec<String>, state: State<'_, AppState>) -> Result<(), String> {
     let mut store = state.store.lock().expect("store lock poisoned");
     if project_ids.is_empty() {
@@ -535,52 +1123,44 @@ fn launch_project(
         .ok_or_else(|| "项目不存在".to_string())?;
     let project = store.projects[project_idx].clone();
 
-    let selected_ide = if let Some(requested) = ide_id {
-        store
+    let selected_ides: Vec<IdeConfig> = if let Some(requested) = ide_id {
+        vec![store
             .ides
             .iter()
             .find(|i| i.id == requested)
             .cloned()
-            .ok_or_else(|| "IDE 不存在".to_string())?
-    } else if let Some(preferred_id) = project.metadata.ide_preferences.first() {
-        store
-            .ides
-            .iter()
-            .find(|i| i.id == *preferred_id)
-            .cloned()
-            .ok_or_else(|| "项目首选 IDE 不存在".to_string())?
+            .ok_or_else(|| "IDE 不存在".to_string())?]
     } else {
-        store
-            .ides
+        let preferred: Vec<IdeConfig> = project
+            .metadata
+            .ide_preferences
             .iter()
-            .min_by_key(|i| i.priority)
-            .cloned()
-            .ok_or_else(|| "没有可用 IDE，请先添加 IDE 配置".to_string())?
+            .take(3)
+            .filter_map(|preferred_id| store.ides.iter().find(|i| i.id == *preferred_id).cloned())
+            .collect();
+        if !preferred.is_empty() {
+            preferred
+        } else {
+            vec![store
+                .ides
+                .iter()
+                .min_by_key(|i| i.priority)
+                .cloned()
+                .ok_or_else(|| "没有可用 IDE，请先添加 IDE 配置".to_string())?]
+        }
     };
 
-    let args = expand_args(&selected_ide.args_template, &project);
-    let mut launched = false;
-
-    if selected_ide.category == IdeCategory::Cli || selected_ide.category == IdeCategory::Terminal {
-        #[cfg(target_os = "windows")]
-        {
-            let mut wt = Command::new("wt");
-            wt.arg("-d")
-                .arg(&project.path)
-                .arg(&selected_ide.executable)
-                .args(&args);
-            if wt.spawn().is_ok() {
-                launched = true;
-            }
+    let mut launched_count = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+    for ide in &selected_ides {
+        match launch_with_ide(&project, ide) {
+            Ok(()) => launched_count += 1,
+            Err(err) => errors.push(err),
         }
     }
 
-    if !launched {
-        Command::new(&selected_ide.executable)
-            .current_dir(&project.path)
-            .args(args)
-            .spawn()
-            .map_err(|e| format!("启动失败: {e}"))?;
+    if launched_count == 0 {
+        return Err(errors.join("；"));
     }
 
     store.projects[project_idx].last_opened = Some(now_iso());
@@ -648,7 +1228,10 @@ pub fn run() {
             remove_ide,
             reorder_projects,
             launch_project,
-            open_in_file_manager
+            open_in_file_manager,
+            scan_ides,
+            add_detected_ides,
+            set_project_ide_preferences,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

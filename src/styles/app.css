@@ -134,6 +134,11 @@ h1 {
   cursor: pointer;
 }
 
+.quick-add-item.primary {
+  background: var(--accent);
+  color: var(--bg-0);
+}
+
 .icon-pill {
   width: 34px;
   height: 28px;
@@ -181,12 +186,23 @@ h1 {
 }
 
 .toolbar {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
   gap: 10px;
   padding: 12px;
   border-radius: 16px;
   background: var(--panel);
+}
+
+.toolbar .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toolbar .chip.check {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .group-wrap {
@@ -210,6 +226,10 @@ h1 {
 
 .card:hover {
   transform: translateY(-2px) scale(1.01);
+}
+
+.card-clickable {
+  cursor: pointer;
 }
 
 .card-top {
@@ -274,6 +294,7 @@ h1 {
   margin-top: 10px;
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .quick-ide {
@@ -282,9 +303,138 @@ h1 {
   gap: 6px;
 }
 
+.quick-ide.compact {
+  margin-top: 8px;
+}
+
 .quick-ide label {
   color: var(--text-soft);
   font-size: 12px;
+}
+
+.ide-launch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ide-selected-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.ide-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 2px;
+  border-radius: 999px;
+  background: var(--chip);
+  flex: 0 0 auto;
+}
+
+.ide-fallback {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--text-soft) 18%, transparent);
+  color: var(--text);
+}
+
+.ide-remove {
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.ide-empty {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.ide-add-select {
+  width: 120px;
+  flex: 0 0 auto;
+}
+
+.ide-launch-picker {
+  display: none;
+}
+
+.ide-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.ide-tile {
+  border: 1px solid color-mix(in srgb, var(--text-soft) 18%, transparent);
+  border-radius: 12px;
+  background: var(--chip);
+  color: var(--text);
+  min-height: 74px;
+  padding: 8px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  position: relative;
+  cursor: pointer;
+}
+
+.ide-tile.selected {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.ide-tile.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ide-tile-name {
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.ide-tile-check {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.ide-icon-preview {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.ide-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .input,
@@ -421,6 +571,6 @@ h1 {
 
 @media (max-width: 980px) {
   .toolbar {
-    grid-template-columns: 1fr;
+    overflow-x: auto;
   }
 }

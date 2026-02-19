@@ -29,6 +29,18 @@ export async function launchProject(projectId: string, ideId?: string) {
   return invoke("launch_project", { projectId, ideId: ideId ?? null });
 }
 
+export async function setProjectIdePreferences(projectId: string, ideIds: string[]) {
+  return invoke("set_project_ide_preferences", { projectId, ideIds });
+}
+
 export async function openInFileManager(path: string) {
   return invoke("open_in_file_manager", { path });
+}
+
+export async function scanIdes() {
+  return invoke<IdeConfig[]>("scan_ides");
+}
+
+export async function addDetectedIdes() {
+  return invoke<IdeConfig[]>("add_detected_ides");
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { IdeConfig, Project } from "../types/project";
 
 defineEmits<{
@@ -21,9 +21,14 @@ const selectedIdeConfigs = computed(() =>
     .filter((ide): ide is IdeConfig => Boolean(ide))
     .slice(0, 3)
 );
+const brokenIconIds = ref<Record<string, boolean>>({});
 
 function ideShortName(name: string) {
   return name.trim().slice(0, 1).toUpperCase();
+}
+
+function markIconBroken(ideId: string) {
+  brokenIconIds.value[ideId] = true;
 }
 </script>
 
@@ -60,7 +65,13 @@ function ideShortName(name: string) {
       <label>上次使用的 IDE</label>
       <div class="ide-selected-row">
         <div v-for="ide in selectedIdeConfigs" :key="ide.id" class="ide-pill" :title="ide.name">
-          <img v-if="ide.icon" :src="ide.icon" :alt="ide.name" class="ide-icon" />
+          <img
+            v-if="ide.icon && !brokenIconIds[ide.id]"
+            :src="ide.icon"
+            :alt="ide.name"
+            class="ide-icon"
+            @error="markIconBroken(ide.id)"
+          />
           <span v-else class="ide-fallback">{{ ideShortName(ide.name) }}</span>
         </div>
         <span v-if="!selectedIdeConfigs.length" class="ide-empty">未设置</span>

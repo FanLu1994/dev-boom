@@ -29,6 +29,7 @@ const {
   filteredProjects,
   loadData,
   chooseProjectFolders,
+  chooseIdeExecutable,
   createProject,
   createIde,
   autoScanIdes,
@@ -104,8 +105,8 @@ onMounted(async () => {
       :form="ideForm"
       @close="showIdeDialog = false"
       @submit="createIde"
+      @choose-executable="chooseIdeExecutable"
       @update:name="ideForm.name = $event"
-      @update:executable="ideForm.executable = $event"
       @update:args-template="ideForm.argsTemplate = $event"
       @update:category="ideForm.category = $event"
       @update:priority="ideForm.priority = $event"

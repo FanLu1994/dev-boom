@@ -130,6 +130,22 @@ fn file_mtime_iso(path: &str) -> Option<String> {
     Some(datetime.to_rfc3339())
 }
 
+#[cfg(target_os = "windows")]
+fn normalize_windows_path_for_ui(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{}", rest);
+    }
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    path.to_string()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn normalize_windows_path_for_ui(path: &str) -> String {
+    path.to_string()
+}
+
 #[derive(Debug, Clone)]
 struct IdeDefinition {
     id: &'static str,
@@ -411,37 +427,70 @@ fn resolve_ide_executable(ide_def: &IdeDefinition) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn extract_icon_from_exe(exe_path: &Path) -> Option<String> {
-    use windows::Win32::UI::Shell::SHFILEINFOW;
+fn resolve_icon_source_path(executable_path: &Path, executable_name: &str) -> PathBuf {
+    let ext = executable_path
+        .extension()
+        .and_then(|v| v.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
 
-    let path_str = exe_path.to_string_lossy().to_string();
-    if !exe_path.exists() {
-        return None;
+    // 对脚本 shim（.cmd/.bat/.ps1）优先尝试找到同名 .exe 作为图标来源
+    if matches!(ext.as_str(), "cmd" | "bat" | "ps1") {
+        if let (Some(parent), Some(stem)) = (executable_path.parent(), executable_path.file_stem()) {
+            let sibling = parent.join(format!("{}.exe", stem.to_string_lossy()));
+            if sibling.exists() {
+                return sibling;
+            }
+        }
+        let normalized = executable_name.trim_end_matches(".exe");
+        if let Some(path) = find_executable_in_path(&format!("{normalized}.exe")) {
+            return path;
+        }
     }
 
-    unsafe {
-        let mut shfi = SHFILEINFOW::default();
-        let path_wide: Vec<u16> = path_str.encode_utf16().chain(std::iter::once(0)).collect();
+    executable_path.to_path_buf()
+}
 
+#[cfg(not(target_os = "windows"))]
+fn resolve_icon_source_path(executable_path: &Path, _executable_name: &str) -> PathBuf {
+    executable_path.to_path_buf()
+}
+
+#[cfg(target_os = "windows")]
+fn extract_icon_from_exe(exe_path: &Path) -> Option<String> {
+    let path_str = exe_path.to_string_lossy().to_string();
+    let path_wide: Vec<u16> = path_str.encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe fn load_hicon(path_wide: &[u16], use_file_attributes: bool) -> Option<HICON> {
+        use windows::Win32::UI::Shell::SHFILEINFOW;
+        let mut shfi = SHFILEINFOW::default();
+        let mut flags = SHGFI_ICON | SHGFI_LARGEICON;
+        if use_file_attributes {
+            flags |= SHGFI_USEFILEATTRIBUTES;
+        }
         let result = SHGetFileInfoW(
             PCWSTR(path_wide.as_ptr()),
             FILE_FLAGS_AND_ATTRIBUTES(0),
             Some(&mut shfi),
             std::mem::size_of::<SHFILEINFOW>() as u32,
-            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
+            flags,
         );
-
-        if result == 0 {
+        if result == 0 || shfi.hIcon == HICON::default() {
             return None;
         }
+        Some(shfi.hIcon)
+    }
 
-        if shfi.hIcon == HICON::default() {
-            return None;
-        }
+    unsafe {
+        // 1) 优先取真实文件图标；2) 再回退文件类型关联图标
+        let hicon = if exe_path.exists() {
+            load_hicon(&path_wide, false).or_else(|| load_hicon(&path_wide, true))
+        } else {
+            load_hicon(&path_wide, true)
+        }?;
 
-        let icon = extract_hicon_to_png(shfi.hIcon)?;
-        DestroyIcon(shfi.hIcon);
-
+        let icon = extract_hicon_to_png(hicon)?;
+        let _ = DestroyIcon(hicon);
         Some(format!("data:image/png;base64,{}", icon))
     }
 }
@@ -636,9 +685,13 @@ fn load_store(path: &Path) -> AppStore {
                 store.ides = default_ides();
             }
             for (idx, project) in store.projects.iter_mut().enumerate() {
+                project.path = normalize_windows_path_for_ui(&project.path);
                 if project.display_order == 0 {
                     project.display_order = idx as i64 + 1;
                 }
+            }
+            for ide in &mut store.ides {
+                ide.executable = normalize_windows_path_for_ui(&ide.executable);
             }
             store
         }
@@ -764,7 +817,30 @@ fn get_projects(state: State<'_, AppState>) -> Vec<Project> {
 
 #[tauri::command]
 fn get_ides(state: State<'_, AppState>) -> Vec<IdeConfig> {
-    let store = state.store.lock().expect("store lock poisoned");
+    let mut store = state.store.lock().expect("store lock poisoned");
+    let mut dirty = false;
+    for ide in &mut store.ides {
+        if ide.icon.is_some() {
+            continue;
+        }
+        let resolved = PathBuf::from(&ide.executable);
+        let icon = if resolved.exists() {
+            let source = resolve_icon_source_path(&resolved, &ide.executable);
+            extract_icon_from_exe(&source)
+        } else if let Some(path) = find_executable_in_path(&ide.executable) {
+            let source = resolve_icon_source_path(&path, &ide.executable);
+            extract_icon_from_exe(&source)
+        } else {
+            None
+        };
+        if icon.is_some() {
+            ide.icon = icon;
+            dirty = true;
+        }
+    }
+    if dirty {
+        let _ = save_store(&state.file_path, &store);
+    }
     let mut ides = store.ides.clone();
     ides.sort_by_key(|x| x.priority);
     ides
@@ -782,6 +858,7 @@ fn add_project(input: NewProjectInput, state: State<'_, AppState>) -> Result<Pro
         .map_err(|e| format!("无法读取项目路径: {e}"))?
         .to_string_lossy()
         .to_string();
+    let normalized_path = normalize_windows_path_for_ui(&normalized_path);
 
     let mut store = state.store.lock().expect("store lock poisoned");
     if store.projects.iter().any(|p| p.path == normalized_path) {
@@ -883,7 +960,7 @@ fn scan_projects(
 
     for item in found_paths {
         let canonical = match item.canonicalize() {
-            Ok(v) => v.to_string_lossy().to_string(),
+            Ok(v) => normalize_windows_path_for_ui(&v.to_string_lossy()),
             Err(_) => continue,
         };
         if existing_paths.contains(&canonical) {
@@ -985,7 +1062,8 @@ fn scan_ides(state: State<'_, AppState>) -> Result<Vec<IdeConfig>, String> {
         let exe_path = resolve_ide_executable(&ide_def);
 
         if let Some(path) = exe_path {
-            let icon = extract_icon_from_exe(&path);
+            let icon_source = resolve_icon_source_path(&path, ide_def.executable_name);
+            let icon = extract_icon_from_exe(&icon_source);
 
             detected.push(IdeConfig {
                 id: ide_def.id.to_string(),

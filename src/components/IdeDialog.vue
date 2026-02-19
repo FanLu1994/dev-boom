@@ -9,6 +9,7 @@ defineProps<{
 defineEmits<{
   close: [];
   submit: [];
+  chooseExecutable: [];
   "update:name": [value: string];
   "update:executable": [value: string];
   "update:argsTemplate": [value: string];
@@ -22,12 +23,13 @@ defineEmits<{
     <form class="dialog glass" @submit.prevent="$emit('submit')">
       <h2>添加 IDE</h2>
       <input :value="form.name" class="input" placeholder="IDE 名称（如 VSCode）" required @input="$emit('update:name', ($event.target as HTMLInputElement).value)" />
+      <button type="button" class="btn ghost" @click="$emit('chooseExecutable')">从文件选择可执行程序</button>
       <input
         :value="form.executable"
         class="input"
-        placeholder="可执行命令或绝对路径（如 code）"
+        placeholder="尚未选择可执行文件"
         required
-        @input="$emit('update:executable', ($event.target as HTMLInputElement).value)"
+        readonly
       />
       <input
         :value="form.argsTemplate"

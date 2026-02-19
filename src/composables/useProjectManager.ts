@@ -98,6 +98,24 @@ export function useProjectManager() {
     }
   }
 
+  async function chooseIdeExecutable() {
+    try {
+      const selected = await open({
+        directory: false,
+        multiple: false,
+        title: "选择 IDE 可执行文件",
+        filters: [
+          { name: "Executable", extensions: ["exe", "cmd", "bat"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+      });
+      if (!selected) return;
+      ideForm.value.executable = Array.isArray(selected) ? selected[0] ?? "" : selected;
+    } catch (error) {
+      setError("选择可执行文件失败", error);
+    }
+  }
+
   async function createProject() {
     if (!projectForm.value.path) {
       errorMessage.value = "请先选择扫描根目录";
@@ -215,6 +233,7 @@ export function useProjectManager() {
     filteredProjects,
     loadData,
     chooseProjectFolders,
+    chooseIdeExecutable,
     createProject,
     createIde,
     autoScanIdes,

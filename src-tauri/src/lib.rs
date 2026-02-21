@@ -1171,15 +1171,28 @@ fn scan_projects_rec(path: &Path, current_depth: u8, max_depth: u8, out: &mut Ve
     }
 }
 
-fn split_args(args: &str) -> Vec<String> {
-    shlex::split(args).unwrap_or_default()
+fn split_args_template(args_template: &str) -> Vec<String> {
+    let trimmed = args_template.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+    if let Some(parts) = shlex::split(trimmed) {
+        if !parts.is_empty() {
+            return parts;
+        }
+    }
+    vec![trimmed.to_string()]
 }
 
 fn expand_args(args_template: &str, project: &Project) -> Vec<String> {
-    let replaced = args_template
-        .replace("{projectPath}", &project.path)
-        .replace("{projectName}", &project.name);
-    split_args(&replaced)
+    // 先拆模板、后替换占位符，避免 Windows 路径中的反斜杠被 shell 解析破坏。
+    split_args_template(args_template)
+        .into_iter()
+        .map(|arg| {
+            arg.replace("{projectPath}", &project.path)
+                .replace("{projectName}", &project.name)
+        })
+        .collect()
 }
 
 #[tauri::command]

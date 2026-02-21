@@ -44,3 +44,7 @@ export async function scanIdes() {
 export async function addDetectedIdes() {
   return invoke<IdeConfig[]>("add_detected_ides");
 }
+
+export async function setIdeIconFromFile(ideId: string, filePath: string) {
+  return invoke<IdeConfig>("set_ide_icon_from_file", { ideId, filePath });
+}

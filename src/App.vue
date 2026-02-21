@@ -30,6 +30,7 @@ const {
   loadData,
   chooseProjectFolders,
   chooseIdeExecutable,
+  chooseAndSetIdeIcon,
   createProject,
   createIde,
   autoScanIdes,
@@ -65,7 +66,6 @@ onMounted(async () => {
       @drag-start="startWindowDrag"
       @open-project-dialog="showProjectDialog = true"
       @open-ide-dialog="showIdeDialog = true"
-      @scan-ides="autoScanIdes"
     />
 
     <section class="content-pane">
@@ -103,8 +103,11 @@ onMounted(async () => {
     <IdeDialog
       :visible="showIdeDialog"
       :form="ideForm"
+      :ides="ides"
       @close="showIdeDialog = false"
       @submit="createIde"
+      @scan="autoScanIdes"
+      @set-icon="chooseAndSetIdeIcon"
       @choose-executable="chooseIdeExecutable"
       @update:name="ideForm.name = $event"
       @update:args-template="ideForm.argsTemplate = $event"

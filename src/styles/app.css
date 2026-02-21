@@ -532,6 +532,110 @@ h1 {
   gap: 10px;
 }
 
+.ide-manager-dialog {
+  width: min(920px, calc(100vw - 24px));
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  gap: 12px;
+  grid-template-rows: auto minmax(180px, 1fr) auto auto;
+}
+
+.ide-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ide-manager-header h2 {
+  margin: 0;
+}
+
+.ide-table-wrap {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--text-soft) 18%, transparent);
+  background: var(--chip);
+  overflow: auto;
+  max-height: 320px;
+  min-height: 180px;
+}
+
+.ide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+
+.ide-table th,
+.ide-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-soft) 12%, transparent);
+  vertical-align: middle;
+}
+
+.ide-table th {
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, var(--panel-strong) 94%, transparent);
+  z-index: 1;
+}
+
+.ide-table th:nth-child(1),
+.ide-table td:nth-child(1) {
+  width: 56px;
+}
+
+.ide-table th:nth-child(2),
+.ide-table td:nth-child(2) {
+  width: 170px;
+}
+
+.ide-table th:nth-child(3),
+.ide-table td:nth-child(3) {
+  width: 90px;
+}
+
+.ide-table th:nth-child(4),
+.ide-table td:nth-child(4) {
+  width: 86px;
+}
+
+.ide-table th:nth-child(5),
+.ide-table td:nth-child(5) {
+  width: auto;
+}
+
+.ide-table th:nth-child(6),
+.ide-table td:nth-child(6) {
+  width: 110px;
+}
+
+.ide-empty-row {
+  color: var(--text-soft);
+}
+
+.ide-executable {
+  width: 100%;
+  word-break: break-all;
+  color: var(--text-soft);
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  font-size: 12px;
+}
+
+.ide-create-form {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.ide-create-form h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
 .folder-list {
   max-height: 120px;
   overflow: auto;

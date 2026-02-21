@@ -9,6 +9,7 @@ import {
   openInFileManager,
   removeProject,
   scanProjects as scanProjectsApi,
+  setIdeIconFromFile,
   setProjectIdePreferences,
   toggleProjectFavorite,
 } from "../api/projectApi";
@@ -116,6 +117,28 @@ export function useProjectManager() {
     }
   }
 
+  async function chooseAndSetIdeIcon(ideId: string) {
+    try {
+      const selected = await open({
+        directory: false,
+        multiple: false,
+        title: "选择 IDE 图标或可执行文件",
+        filters: [
+          { name: "Icon & Executable", extensions: ["png", "svg", "ico", "jpg", "jpeg", "webp", "exe", "cmd", "bat", "ps1"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+      });
+      if (!selected) return;
+      const filePath = Array.isArray(selected) ? selected[0] ?? "" : selected;
+      if (!filePath) return;
+      await setIdeIconFromFile(ideId, filePath);
+      errorMessage.value = "图标已更新";
+      await loadData();
+    } catch (error) {
+      setError("设置图标失败", error);
+    }
+  }
+
   async function createProject() {
     if (!projectForm.value.path) {
       errorMessage.value = "请先选择扫描根目录";
@@ -138,7 +161,7 @@ export function useProjectManager() {
     try {
       await addIde(ideForm.value);
       ideForm.value = { ...EMPTY_IDE_FORM };
-      showIdeDialog.value = false;
+      errorMessage.value = "IDE 添加成功";
       await loadData();
     } catch (error) {
       setError("添加 IDE 失败", error);
@@ -234,6 +257,7 @@ export function useProjectManager() {
     loadData,
     chooseProjectFolders,
     chooseIdeExecutable,
+    chooseAndSetIdeIcon,
     createProject,
     createIde,
     autoScanIdes,

@@ -22,11 +22,6 @@ function openIde() {
   emit("openIdeDialog");
 }
 
-function scanIdes() {
-  showQuickAdd.value = false;
-  emit("scanIdes");
-}
-
 const emit = defineEmits<{
   toggleTheme: [];
   minimize: [];
@@ -35,7 +30,6 @@ const emit = defineEmits<{
   dragStart: [event: MouseEvent];
   openProjectDialog: [];
   openIdeDialog: [];
-  scanIdes: [];
 }>();
 </script>
 
@@ -54,8 +48,7 @@ const emit = defineEmits<{
         <button class="icon-pill" @click="toggleQuickAdd">+</button>
         <div v-if="showQuickAdd" class="quick-add-panel">
           <button class="quick-add-item" @click="openProject">添加项目</button>
-          <button class="quick-add-item" @click="openIde">添加 IDE</button>
-          <button class="quick-add-item primary" @click="scanIdes">扫描 IDE</button>
+          <button class="quick-add-item primary" @click="openIde">IDE 管理</button>
         </div>
       </div>
       <button

@@ -839,6 +839,55 @@ fn decode_ide_icon_cache_mime(path: &Path) -> &'static str {
     }
 }
 
+fn image_mime_by_extension(path: &Path) -> Option<&'static str> {
+    match path
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|s| s.to_ascii_lowercase())
+    {
+        Some(ext) if ext == "png" => Some("image/png"),
+        Some(ext) if ext == "svg" => Some("image/svg+xml"),
+        Some(ext) if ext == "ico" => Some("image/x-icon"),
+        Some(ext) if ext == "jpg" || ext == "jpeg" => Some("image/jpeg"),
+        Some(ext) if ext == "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn image_file_to_data_url(path: &Path) -> Result<String, String> {
+    let mime = image_mime_by_extension(path)
+        .ok_or_else(|| "仅支持 png/svg/ico/jpg/webp 图标文件，或 exe/cmd/bat/ps1 可执行文件".to_string())?;
+    let bytes = fs::read(path).map_err(|e| format!("读取图标文件失败: {e}"))?;
+    if bytes.is_empty() {
+        return Err("图标文件为空".to_string());
+    }
+    if bytes.len() > 2 * 1024 * 1024 {
+        return Err("图标文件过大（限制 2MB）".to_string());
+    }
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(format!("data:{mime};source=user-file-v1;base64,{encoded}"))
+}
+
+fn icon_data_url_from_user_file(path: &Path) -> Result<String, String> {
+    let ext = path
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    if matches!(ext.as_str(), "exe" | "cmd" | "bat" | "ps1") {
+        let display_name = path
+            .file_name()
+            .and_then(|v| v.to_str())
+            .unwrap_or("app.exe");
+        let source = resolve_icon_source_path(path, display_name);
+        return extract_icon_from_exe(&source).ok_or_else(|| "从可执行文件提取图标失败".to_string());
+    }
+
+    image_file_to_data_url(path)
+}
+
 fn load_cached_ide_icon(store_file_path: &Path, ide_id: &str) -> Option<String> {
     let cache_dir = ide_icon_cache_dir(store_file_path);
     let candidates = [
@@ -1368,6 +1417,30 @@ fn remove_ide(ide_id: String, state: State<'_, AppState>) -> Result<(), String> 
 }
 
 #[tauri::command]
+fn set_ide_icon_from_file(
+    ide_id: String,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> Result<IdeConfig, String> {
+    let path = PathBuf::from(file_path);
+    if !path.exists() || !path.is_file() {
+        return Err("图标文件不存在".to_string());
+    }
+
+    let icon_data_url = icon_data_url_from_user_file(&path)?;
+    let mut store = state.store.lock().expect("store lock poisoned");
+    let ide = store
+        .ides
+        .iter_mut()
+        .find(|x| x.id == ide_id)
+        .ok_or_else(|| "IDE 不存在".to_string())?;
+    ide.icon = Some(icon_data_url);
+    let updated = ide.clone();
+    save_store(&state.file_path, &store)?;
+    Ok(updated)
+}
+
+#[tauri::command]
 fn scan_ides(state: State<'_, AppState>) -> Result<Vec<IdeConfig>, String> {
     let known_ides = get_known_ides();
     let mut detected = vec![];
@@ -1641,6 +1714,7 @@ pub fn run() {
             scan_projects,
             add_ide,
             remove_ide,
+            set_ide_icon_from_file,
             reorder_projects,
             launch_project,
             open_in_file_manager,

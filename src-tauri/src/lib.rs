@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::Mutex,
+    time::Duration,
 };
 
 use chrono::Utc;
@@ -17,7 +18,7 @@ use windows::{
     core::PCWSTR,
     Win32::Graphics::Gdi::{
         DeleteObject, GetDC, ReleaseDC, CreateCompatibleDC, SelectObject, DeleteDC,
-        CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        CreateDIBSection, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, GetObjectW,
     },
     Win32::UI::Shell::{SHGetFileInfoW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES},
     Win32::UI::WindowsAndMessaging::{DestroyIcon, HICON},
@@ -491,7 +492,7 @@ fn extract_icon_from_exe(exe_path: &Path) -> Option<String> {
 
         let icon = extract_hicon_to_png(hicon)?;
         let _ = DestroyIcon(hicon);
-        Some(format!("data:image/png;base64,{}", icon))
+        Some(format!("data:image/png;extraction=v3;base64,{}", icon))
     }
 }
 
@@ -514,16 +515,16 @@ unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
 
     let mut icon_info = windows::Win32::UI::WindowsAndMessaging::ICONINFO::default();
     if windows::Win32::UI::WindowsAndMessaging::GetIconInfo(hicon, &mut icon_info).is_ok() {
-        let width = (if icon_info.xHotspot > 0 { icon_info.xHotspot as i32 } else { 32 }).clamp(1, 512);
-        let height = (if icon_info.yHotspot > 0 { icon_info.yHotspot as i32 } else { 32 }).clamp(1, 512);
+        let (width, height) = icon_dimensions_from_info(&icon_info);
 
         let mut ppv_bits: *mut std::ffi::c_void = null_mut();
 
-        let mut bmi = BITMAPINFO {
+        let bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
                 biWidth: width,
-                biHeight: height * 2, // DIB section height is doubled for icons
+                // 目标 DIB 本身不是 icon-mask，不能把高度翻倍；负值表示 top-down。
+                biHeight: -height,
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: BI_RGB.0,
@@ -552,7 +553,7 @@ unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
                 if !icon_info.hbmMask.is_invalid() {
                     let _ = DeleteObject(icon_info.hbmMask);
                 }
-                DeleteDC(mem_dc);
+                let _ = DeleteDC(mem_dc);
                 ReleaseDC(None, hdc);
                 return None;
             }
@@ -566,7 +567,7 @@ unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
             if !icon_info.hbmMask.is_invalid() {
                 let _ = DeleteObject(icon_info.hbmMask);
             }
-            DeleteDC(mem_dc);
+            let _ = DeleteDC(mem_dc);
             ReleaseDC(None, hdc);
             return None;
         }
@@ -588,15 +589,44 @@ unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
         let pixels_len = (width * height) as usize;
         let pixels_slice = std::slice::from_raw_parts(ppv_bits as *const u32, pixels_len);
         let mut rgba_pixels: Vec<u8> = Vec::with_capacity(pixels_len * 4);
+        let mut has_alpha = false;
         for &pixel in pixels_slice {
             let b = (pixel & 0xFF) as u8;
             let g = ((pixel >> 8) & 0xFF) as u8;
             let r = ((pixel >> 16) & 0xFF) as u8;
             let a = ((pixel >> 24) & 0xFF) as u8;
+            if a > 0 {
+                has_alpha = true;
+            }
             rgba_pixels.push(r);
             rgba_pixels.push(g);
             rgba_pixels.push(b);
             rgba_pixels.push(a);
+        }
+
+        // 无 alpha 时，按 AND mask 恢复透明度（1=透明，0=不透明）。
+        if !has_alpha {
+            if let Some(mask_alpha) = build_alpha_from_icon_mask(hicon, width, height) {
+                for (idx, chunk) in rgba_pixels.chunks_mut(4).enumerate() {
+                    chunk[3] = mask_alpha[idx];
+                }
+            } else {
+                for chunk in rgba_pixels.chunks_mut(4) {
+                    // 最后兜底：仅在像素不是纯黑时设为不透明，避免整图黑块。
+                    chunk[3] = if chunk[0] == 0 && chunk[1] == 0 && chunk[2] == 0 { 0 } else { 255 };
+                }
+            }
+        } else {
+            // DrawIconEx/AlphaBlend 路径常见预乘 alpha，导出 PNG 需要转回直通 alpha，避免发黑。
+            for chunk in rgba_pixels.chunks_mut(4) {
+                let a = chunk[3] as u32;
+                if a == 0 || a == 255 {
+                    continue;
+                }
+                chunk[0] = ((chunk[0] as u32 * 255 + a / 2) / a).min(255) as u8;
+                chunk[1] = ((chunk[1] as u32 * 255 + a / 2) / a).min(255) as u8;
+                chunk[2] = ((chunk[2] as u32 * 255 + a / 2) / a).min(255) as u8;
+            }
         }
 
         let _ = SelectObject(mem_dc, old_bitmap);
@@ -619,16 +649,147 @@ unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
             )
             .is_ok()
         {
-            DeleteDC(mem_dc);
+            let _ = DeleteDC(mem_dc);
             ReleaseDC(None, hdc);
             use base64::Engine;
             return Some(base64::engine::general_purpose::STANDARD.encode(&png_bytes));
         }
     }
 
-    DeleteDC(mem_dc);
+    let _ = DeleteDC(mem_dc);
     ReleaseDC(None, hdc);
     None
+}
+
+#[cfg(target_os = "windows")]
+fn icon_dimensions_from_info(
+    icon_info: &windows::Win32::UI::WindowsAndMessaging::ICONINFO,
+) -> (i32, i32) {
+    unsafe {
+        let mut bmp = BITMAP::default();
+
+        if !icon_info.hbmColor.is_invalid() {
+            let got = GetObjectW(
+                icon_info.hbmColor,
+                std::mem::size_of::<BITMAP>() as i32,
+                Some((&mut bmp as *mut BITMAP).cast()),
+            );
+            if got > 0 && bmp.bmWidth > 0 && bmp.bmHeight > 0 {
+                return (bmp.bmWidth.clamp(1, 512), bmp.bmHeight.clamp(1, 512));
+            }
+        }
+
+        if !icon_info.hbmMask.is_invalid() {
+            let got = GetObjectW(
+                icon_info.hbmMask,
+                std::mem::size_of::<BITMAP>() as i32,
+                Some((&mut bmp as *mut BITMAP).cast()),
+            );
+            if got > 0 && bmp.bmWidth > 0 && bmp.bmHeight > 0 {
+                let mut h = bmp.bmHeight;
+                if icon_info.hbmColor.is_invalid() {
+                    // 单色 icon: hbmMask 高度包含 AND/XOR 两段。
+                    h /= 2;
+                }
+                return (bmp.bmWidth.clamp(1, 512), h.clamp(1, 512));
+            }
+        }
+    }
+
+    (32, 32)
+}
+
+#[cfg(target_os = "windows")]
+fn build_alpha_from_icon_mask(hicon: HICON, width: i32, height: i32) -> Option<Vec<u8>> {
+    unsafe {
+        use std::ptr::null_mut;
+        let hdc = GetDC(None);
+        if hdc.is_invalid() {
+            return None;
+        }
+
+        let dc = CreateCompatibleDC(hdc);
+        if dc.is_invalid() {
+            ReleaseDC(None, hdc);
+            return None;
+        }
+
+        let mut bits_ptr: *mut std::ffi::c_void = null_mut();
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [Default::default()],
+        };
+
+        let dib = match CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &mut bits_ptr, None, 0) {
+            Ok(v) => v,
+            Err(_) => {
+                let _ = DeleteDC(dc);
+                ReleaseDC(None, hdc);
+                return None;
+            }
+        };
+
+        if bits_ptr.is_null() {
+            let _ = DeleteObject(dib);
+            let _ = DeleteDC(dc);
+            ReleaseDC(None, hdc);
+            return None;
+        }
+
+        // 先填白，DI_MASK 绘制后透明区域保持白色，实像素区域为黑色。
+        let pixels_len = (width * height) as usize;
+        let mask_pixels = std::slice::from_raw_parts_mut(bits_ptr as *mut u32, pixels_len);
+        for px in mask_pixels.iter_mut() {
+            *px = 0xFFFFFFFF;
+        }
+
+        let old = SelectObject(dc, dib);
+        let _ = windows::Win32::UI::WindowsAndMessaging::DrawIconEx(
+            dc,
+            0,
+            0,
+            hicon,
+            width,
+            height,
+            0,
+            None,
+            windows::Win32::UI::WindowsAndMessaging::DI_MASK,
+        );
+
+        let mut alpha = Vec::with_capacity(pixels_len);
+        for &pixel in mask_pixels.iter() {
+            let b = (pixel & 0xFF) as u8;
+            alpha.push(if b > 127 { 0 } else { 255 });
+        }
+
+        let _ = SelectObject(dc, old);
+        let _ = DeleteObject(dib);
+        let _ = DeleteDC(dc);
+        ReleaseDC(None, hdc);
+        Some(alpha)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn is_cached_v3_icon(icon: &str) -> bool {
+    icon.starts_with("data:image/png;extraction=v3;base64,")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_cached_v3_icon(_icon: &str) -> bool {
+    true
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -659,6 +820,174 @@ fn default_ides() -> Vec<IdeConfig> {
             auto_detected: false,
         },
     ]
+}
+
+fn ide_icon_cache_dir(store_file_path: &Path) -> PathBuf {
+    store_file_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("ide-icons")
+}
+
+fn decode_ide_icon_cache_mime(path: &Path) -> &'static str {
+    match path.extension().and_then(|v| v.to_str()).map(|s| s.to_ascii_lowercase()) {
+        Some(ext) if ext == "svg" => "image/svg+xml",
+        Some(ext) if ext == "ico" => "image/x-icon",
+        Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
+        Some(ext) if ext == "webp" => "image/webp",
+        _ => "image/png",
+    }
+}
+
+fn load_cached_ide_icon(store_file_path: &Path, ide_id: &str) -> Option<String> {
+    let cache_dir = ide_icon_cache_dir(store_file_path);
+    let candidates = [
+        cache_dir.join(format!("{ide_id}.svg")),
+        cache_dir.join(format!("{ide_id}.png")),
+        cache_dir.join(format!("{ide_id}.ico")),
+        cache_dir.join(format!("{ide_id}.webp")),
+        cache_dir.join(format!("{ide_id}.jpg")),
+    ];
+
+    for path in candidates {
+        let bytes = match fs::read(&path) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if bytes.is_empty() {
+            continue;
+        }
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        let mime = decode_ide_icon_cache_mime(&path);
+        return Some(format!("data:{mime};source=web-cache-v1;base64,{encoded}"));
+    }
+
+    None
+}
+
+fn online_icon_urls_for_ide(ide: &IdeConfig) -> Vec<&'static str> {
+    let id = ide.id.to_ascii_lowercase();
+    let name = ide.name.to_ascii_lowercase();
+    let executable = ide.executable.to_ascii_lowercase();
+    let merged = format!("{id} {name} {executable}");
+
+    if merged.contains("vscode") || merged.contains("visual studio code") || merged.contains("code.exe") {
+        return vec![
+            "https://code.visualstudio.com/favicon.ico",
+            "https://code.visualstudio.com/assets/images/code-stable.png",
+        ];
+    }
+    if merged.contains("cursor") {
+        return vec![
+            "https://cursor.com/favicon.ico",
+            "https://www.cursor.com/favicon.ico",
+        ];
+    }
+    if merged.contains("claude") {
+        return vec![
+            "https://claude.ai/favicon.ico",
+            "https://www.anthropic.com/favicon.ico",
+        ];
+    }
+    if merged.contains("opencode") {
+        return vec![
+            "https://opencode.ai/favicon.ico",
+            "https://github.com/sst/opencode/raw/dev/packages/web/public/favicon.ico",
+        ];
+    }
+    if merged.contains("codex") || merged.contains("openai") {
+        return vec![
+            "https://openai.com/favicon.ico",
+            "https://chatgpt.com/favicon.ico",
+        ];
+    }
+
+    vec![]
+}
+
+fn guess_icon_ext_by_content_type(content_type: &str) -> &'static str {
+    let value = content_type.to_ascii_lowercase();
+    if value.contains("image/svg+xml") {
+        "svg"
+    } else if value.contains("image/x-icon") || value.contains("image/vnd.microsoft.icon") {
+        "ico"
+    } else if value.contains("image/webp") {
+        "webp"
+    } else if value.contains("image/jpeg") || value.contains("image/jpg") {
+        "jpg"
+    } else {
+        "png"
+    }
+}
+
+fn download_and_cache_ide_icon(store_file_path: &Path, ide: &IdeConfig) -> Option<String> {
+    let urls = online_icon_urls_for_ide(ide);
+    if urls.is_empty() {
+        return None;
+    }
+
+    let cache_dir = ide_icon_cache_dir(store_file_path);
+    let _ = fs::create_dir_all(&cache_dir);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(6))
+        .user_agent("dev-boom/0.1 ide-icon-fetch")
+        .build()
+        .ok()?;
+
+    for url in urls {
+        let response = match client.get(url).send() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if !response.status().is_success() {
+            continue;
+        }
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/png")
+            .to_string();
+        if !content_type.to_ascii_lowercase().contains("image/") {
+            continue;
+        }
+        let bytes = match response.bytes() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if bytes.is_empty() || bytes.len() > 2 * 1024 * 1024 {
+            continue;
+        }
+
+        let ext = guess_icon_ext_by_content_type(&content_type);
+        let cache_path = cache_dir.join(format!("{}.{}", ide.id, ext));
+        let _ = fs::write(&cache_path, &bytes);
+
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        return Some(format!("data:{};source=web-v1;base64,{}", decode_ide_icon_cache_mime(&cache_path), encoded));
+    }
+
+    None
+}
+
+fn resolve_ide_icon(store_file_path: &Path, ide: &IdeConfig) -> Option<String> {
+    let resolved = PathBuf::from(&ide.executable);
+    if resolved.exists() {
+        let source = resolve_icon_source_path(&resolved, &ide.executable);
+        if let Some(icon) = extract_icon_from_exe(&source) {
+            return Some(icon);
+        }
+    } else if let Some(path) = find_executable_in_path(&ide.executable) {
+        let source = resolve_icon_source_path(&path, &ide.executable);
+        if let Some(icon) = extract_icon_from_exe(&source) {
+            return Some(icon);
+        }
+    }
+
+    load_cached_ide_icon(store_file_path, &ide.id)
+        .or_else(|| download_and_cache_ide_icon(store_file_path, ide))
 }
 
 fn load_store(path: &Path) -> AppStore {
@@ -820,19 +1149,14 @@ fn get_ides(state: State<'_, AppState>) -> Vec<IdeConfig> {
     let mut store = state.store.lock().expect("store lock poisoned");
     let mut dirty = false;
     for ide in &mut store.ides {
-        if ide.icon.is_some() {
+        let should_refresh_icon = match ide.icon.as_deref() {
+            None => true,
+            Some(icon) => icon.starts_with("data:image/png") && !is_cached_v3_icon(icon),
+        };
+        if !should_refresh_icon {
             continue;
         }
-        let resolved = PathBuf::from(&ide.executable);
-        let icon = if resolved.exists() {
-            let source = resolve_icon_source_path(&resolved, &ide.executable);
-            extract_icon_from_exe(&source)
-        } else if let Some(path) = find_executable_in_path(&ide.executable) {
-            let source = resolve_icon_source_path(&path, &ide.executable);
-            extract_icon_from_exe(&source)
-        } else {
-            None
-        };
+        let icon = resolve_ide_icon(&state.file_path, ide);
         if icon.is_some() {
             ide.icon = icon;
             dirty = true;
@@ -1063,7 +1387,20 @@ fn scan_ides(state: State<'_, AppState>) -> Result<Vec<IdeConfig>, String> {
 
         if let Some(path) = exe_path {
             let icon_source = resolve_icon_source_path(&path, ide_def.executable_name);
-            let icon = extract_icon_from_exe(&icon_source);
+            let icon = extract_icon_from_exe(&icon_source).or_else(|| {
+                let placeholder = IdeConfig {
+                    id: ide_def.id.to_string(),
+                    name: ide_def.name.to_string(),
+                    executable: path.to_string_lossy().to_string(),
+                    args_template: ide_def.args_template.to_string(),
+                    icon: None,
+                    category: ide_def.category.clone(),
+                    priority: ide_def.priority,
+                    auto_detected: true,
+                };
+                load_cached_ide_icon(&state.file_path, ide_def.id)
+                    .or_else(|| download_and_cache_ide_icon(&state.file_path, &placeholder))
+            });
 
             detected.push(IdeConfig {
                 id: ide_def.id.to_string(),

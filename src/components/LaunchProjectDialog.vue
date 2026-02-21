@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import type { IdeConfig, Project } from "../types/project";
 
 const props = defineProps<{
@@ -29,6 +30,12 @@ function toggleIde(ideId: string) {
 function ideShortName(name: string) {
   return name.trim().slice(0, 1).toUpperCase();
 }
+
+const brokenIconIds = ref<Record<string, boolean>>({});
+
+function markIconBroken(ideId: string) {
+  brokenIconIds.value[ideId] = true;
+}
 </script>
 
 <template>
@@ -48,7 +55,13 @@ function ideShortName(name: string) {
           :disabled="!selectedIdeIds.includes(ide.id) && selectedIdeIds.length >= 3"
           @click="toggleIde(ide.id)"
         >
-          <img v-if="ide.icon" :src="ide.icon" :alt="ide.name" class="ide-icon" />
+          <img
+            v-if="ide.icon && !brokenIconIds[ide.id]"
+            :src="ide.icon"
+            :alt="ide.name"
+            class="ide-icon"
+            @error="markIconBroken(ide.id)"
+          />
           <span v-else class="ide-fallback">{{ ideShortName(ide.name) }}</span>
           <span class="ide-tile-name">{{ ide.name }}</span>
           <span v-if="selectedIdeIds.includes(ide.id)" class="ide-tile-check">✓</span>

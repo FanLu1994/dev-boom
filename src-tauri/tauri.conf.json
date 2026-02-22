@@ -20,6 +20,20 @@
         "minHeight": 560,
         "decorations": false,
         "resizable": true
+      },
+      {
+        "label": "mini",
+        "title": "Quick Access",
+        "width": 360,
+        "height": 480,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "decorations": false,
+        "transparent": true,
+        "center": false,
+        "visible": false,
+        "url": "#/mini"
       }
     ],
     "security": {

@@ -1,3 +1,5 @@
+mod tray;
+
 use std::{
     collections::HashSet,
     env,
@@ -1699,6 +1701,35 @@ fn open_in_file_manager(path: String) -> Result<(), String> {
     Err("当前系统不支持打开文件管理器".to_string())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MiniWindowPosition {
+    x: i32,
+    y: i32,
+}
+
+#[tauri::command]
+fn save_mini_window_position(x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
+    let pos_path = state
+        .file_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("mini-window-position.json");
+    let pos = MiniWindowPosition { x, y };
+    let content = serde_json::to_string(&pos).map_err(|e| e.to_string())?;
+    fs::write(pos_path, content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_mini_window_position(state: State<'_, AppState>) -> Option<MiniWindowPosition> {
+    let pos_path = state
+        .file_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("mini-window-position.json");
+    let content = fs::read_to_string(pos_path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1714,6 +1745,46 @@ pub fn run() {
                 file_path: store_path,
                 store: Mutex::new(store),
             });
+
+            tray::create_tray(app).map_err(|e| format!("创建托盘失败: {e}"))?;
+
+            if let Some(main_win) = app.get_webview_window("main") {
+                let win = main_win.clone();
+                main_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win.hide();
+                    }
+                });
+            }
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::{
+                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+                };
+                let shortcut =
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyP);
+                let app_handle = app.handle().clone();
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(move |_app, _shortcut, event| {
+                            if event.state() == ShortcutState::Pressed {
+                                if let Some(mini) = app_handle.get_webview_window("mini") {
+                                    if mini.is_visible().unwrap_or(false) {
+                                        let _ = mini.hide();
+                                    } else {
+                                        let _ = mini.show();
+                                        let _ = mini.set_focus();
+                                    }
+                                }
+                            }
+                        })
+                        .build(),
+                )?;
+                app.global_shortcut().register(shortcut)?;
+            }
+
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
@@ -1734,6 +1805,8 @@ pub fn run() {
             scan_ides,
             add_detected_ides,
             set_project_ide_preferences,
+            save_mini_window_position,
+            load_mini_window_position,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

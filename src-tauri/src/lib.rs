@@ -1730,6 +1730,30 @@ fn load_mini_window_position(state: State<'_, AppState>) -> Option<MiniWindowPos
     serde_json::from_str(&content).ok()
 }
 
+#[tauri::command]
+fn switch_to_mini_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(main_win) = app.get_webview_window("main") {
+        main_win.hide().map_err(|e| e.to_string())?;
+    }
+    if let Some(mini_win) = app.get_webview_window("mini") {
+        mini_win.show().map_err(|e| e.to_string())?;
+        mini_win.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn switch_to_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(mini_win) = app.get_webview_window("mini") {
+        mini_win.hide().map_err(|e| e.to_string())?;
+    }
+    if let Some(main_win) = app.get_webview_window("main") {
+        main_win.show().map_err(|e| e.to_string())?;
+        main_win.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1770,13 +1794,24 @@ pub fn run() {
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |_app, _shortcut, event| {
                             if event.state() == ShortcutState::Pressed {
-                                if let Some(mini) = app_handle.get_webview_window("mini") {
-                                    if mini.is_visible().unwrap_or(false) {
-                                        let _ = mini.hide();
-                                    } else {
-                                        let _ = mini.show();
-                                        let _ = mini.set_focus();
-                                    }
+                                let mini = app_handle.get_webview_window("mini");
+                                let main_win = app_handle.get_webview_window("main");
+                                let mini_visible = mini
+                                    .as_ref()
+                                    .and_then(|w| w.is_visible().ok())
+                                    .unwrap_or(false);
+                                if mini_visible {
+                                    let _ = mini.as_ref().map(|w| w.hide());
+                                    let _ = main_win.as_ref().map(|w| {
+                                        w.show();
+                                        w.set_focus()
+                                    });
+                                } else {
+                                    let _ = main_win.as_ref().map(|w| w.hide());
+                                    let _ = mini.as_ref().map(|w| {
+                                        w.show();
+                                        w.set_focus()
+                                    });
                                 }
                             }
                         })
@@ -1807,6 +1842,8 @@ pub fn run() {
             set_project_ide_preferences,
             save_mini_window_position,
             load_mini_window_position,
+            switch_to_mini_window,
+            switch_to_main_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -27,15 +27,21 @@ pub fn create_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::e
         .show_menu_on_left_click(false)
         .on_menu_event(|app_handle, event| match event.id().as_ref() {
             "open_mini" => {
-                if let Some(w) = app_handle.get_webview_window("mini") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
+                if let Some(main_win) = app_handle.get_webview_window("main") {
+                    let _ = main_win.hide();
+                }
+                if let Some(mini_win) = app_handle.get_webview_window("mini") {
+                    let _ = mini_win.show();
+                    let _ = mini_win.set_focus();
                 }
             }
             "open_main" => {
-                if let Some(w) = app_handle.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
+                if let Some(mini_win) = app_handle.get_webview_window("mini") {
+                    let _ = mini_win.hide();
+                }
+                if let Some(main_win) = app_handle.get_webview_window("main") {
+                    let _ = main_win.show();
+                    let _ = main_win.set_focus();
                 }
             }
             "quit" => {
@@ -49,9 +55,13 @@ pub fn create_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::e
                 ..
             } = event
             {
-                if let Some(w) = tray_icon.app_handle().get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
+                let app = tray_icon.app_handle();
+                if let Some(mini_win) = app.get_webview_window("mini") {
+                    let _ = mini_win.hide();
+                }
+                if let Some(main_win) = app.get_webview_window("main") {
+                    let _ = main_win.show();
+                    let _ = main_win.set_focus();
                 }
             }
         })

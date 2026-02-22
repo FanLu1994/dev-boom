@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import type { ThemeMode } from "../types/project";
 
 defineProps<{
@@ -20,6 +21,14 @@ function openProject() {
 function openIde() {
   showQuickAdd.value = false;
   emit("openIdeDialog");
+}
+
+async function switchToMini() {
+  try {
+    await invoke("switch_to_mini_window");
+  } catch {
+    // noop
+  }
 }
 
 const emit = defineEmits<{
@@ -51,6 +60,14 @@ const emit = defineEmits<{
           <button class="quick-add-item primary" @click="openIde">IDE 管理</button>
         </div>
       </div>
+      <button
+        class="icon-pill"
+        aria-label="切换到小窗口"
+        title="切换到小窗口"
+        @click="switchToMini"
+      >
+        ⇄
+      </button>
       <button
         class="icon-pill"
         :aria-label="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"

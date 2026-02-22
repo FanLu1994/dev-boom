@@ -24,7 +24,7 @@
       {
         "label": "mini",
         "title": "Quick Access",
-        "width": 360,
+        "width": 320,
         "height": 480,
         "resizable": false,
         "alwaysOnTop": true,

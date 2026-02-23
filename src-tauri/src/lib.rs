@@ -1,7 +1,7 @@
 mod tray;
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env,
     fs,
     path::{Path, PathBuf},
@@ -45,6 +45,25 @@ struct ProjectMetadata {
     ide_preferences: Vec<String>,
     git_url: Option<String>,
     description: Option<String>,
+    #[serde(default)]
+    language_stats: Option<LanguageStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LanguageStats {
+    total_lines: u64,
+    languages: Vec<LanguageEntry>,
+    scanned_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LanguageEntry {
+    language: String,
+    lines: u64,
+    files: u32,
+    percentage: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1253,6 +1272,33 @@ fn add_project(input: NewProjectInput, state: State<'_, AppState>) -> Result<Pro
         return Err("该项目路径已存在".to_string());
     }
 
+    // 自动统计语言分布
+    let language_stats = scan_project_languages(&path).ok().map(|lang_data| {
+        let total_lines: u64 = lang_data.values().map(|(lines, _)| *lines).sum();
+        let mut languages: Vec<LanguageEntry> = lang_data
+            .into_iter()
+            .map(|(language, (lines, files))| {
+                let percentage = if total_lines > 0 {
+                    (lines as f64 / total_lines as f64) * 100.0
+                } else {
+                    0.0
+                };
+                LanguageEntry {
+                    language,
+                    lines,
+                    files,
+                    percentage,
+                }
+            })
+            .collect();
+        languages.sort_by(|a, b| b.lines.cmp(&a.lines));
+        LanguageStats {
+            total_lines,
+            languages,
+            scanned_at: now_iso(),
+        }
+    });
+
     let created = Project {
         id: Uuid::new_v4().to_string(),
         name: if input.name.trim().is_empty() {
@@ -1283,6 +1329,7 @@ fn add_project(input: NewProjectInput, state: State<'_, AppState>) -> Result<Pro
             ide_preferences: input.ide_preferences.unwrap_or_default(),
             git_url: None,
             description: input.description,
+            language_stats,
         },
     };
 
@@ -1351,35 +1398,74 @@ fn scan_projects(
             Ok(v) => normalize_windows_path_for_ui(&v.to_string_lossy()),
             Err(_) => continue,
         };
-        if existing_paths.contains(&canonical) {
-            continue;
-        }
-        existing_paths.insert(canonical.clone());
 
-        let project = Project {
-            id: Uuid::new_v4().to_string(),
-            name: item
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("untitled")
-                .to_string(),
-            path: canonical.clone(),
-            project_type: detect_project_type(&item),
-            favorite: false,
-            tags: vec![],
-            last_opened: None,
-            last_modified: file_mtime_iso(&canonical),
-            created_at: now_iso(),
-            display_order: next_order,
-            metadata: ProjectMetadata {
-                ide_preferences: vec![],
-                git_url: None,
-                description: None,
-            },
-        };
-        next_order += 1;
-        store.projects.push(project.clone());
-        added.push(project);
+        // 检查项目是否已存在
+        let is_new = !existing_paths.contains(&canonical);
+        if is_new {
+            existing_paths.insert(canonical.clone());
+        }
+
+        // 自动统计语言分布（新项目和已有项目都更新）
+        let language_stats = scan_project_languages(&item).ok().map(|lang_data| {
+            let total_lines: u64 = lang_data.values().map(|(lines, _)| *lines).sum();
+            let mut languages: Vec<LanguageEntry> = lang_data
+                .into_iter()
+                .map(|(language, (lines, files))| {
+                    let percentage = if total_lines > 0 {
+                        (lines as f64 / total_lines as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    LanguageEntry {
+                        language,
+                        lines,
+                        files,
+                        percentage,
+                    }
+                })
+                .collect();
+            languages.sort_by(|a, b| b.lines.cmp(&a.lines));
+            LanguageStats {
+                total_lines,
+                languages,
+                scanned_at: now_iso(),
+            }
+        });
+
+        if is_new {
+            // 创建新项目
+            let project = Project {
+                id: Uuid::new_v4().to_string(),
+                name: item
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("untitled")
+                    .to_string(),
+                path: canonical.clone(),
+                project_type: detect_project_type(&item),
+                favorite: false,
+                tags: vec![],
+                last_opened: None,
+                last_modified: file_mtime_iso(&canonical),
+                created_at: now_iso(),
+                display_order: next_order,
+                metadata: ProjectMetadata {
+                    ide_preferences: vec![],
+                    git_url: None,
+                    description: None,
+                    language_stats,
+                },
+            };
+            next_order += 1;
+            store.projects.push(project.clone());
+            added.push(project);
+        } else {
+            // 更新已有项目的语言统计
+            if let Some(project) = store.projects.iter_mut().find(|p| p.path == canonical) {
+                project.metadata.language_stats = language_stats;
+                added.push(project.clone());
+            }
+        }
     }
 
     if !added.is_empty() {
@@ -1455,6 +1541,7 @@ fn set_ide_icon_from_file(
     Ok(updated)
 }
 
+#[cfg(target_os = "windows")]
 #[tauri::command]
 fn scan_ides(state: State<'_, AppState>) -> Result<Vec<IdeConfig>, String> {
     let known_ides = get_known_ides();
@@ -1840,6 +1927,216 @@ fn switch_to_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// 文件扩展名到语言的映射
+fn get_language_from_extension(ext: &str) -> Option<&'static str> {
+    let ext_lower = ext.to_ascii_lowercase();
+    match ext_lower.as_str() {
+        // Rust
+        "rs" => Some("Rust"),
+        // JavaScript/TypeScript
+        "js" | "jsx" | "mjs" => Some("JavaScript"),
+        "ts" | "tsx" => Some("TypeScript"),
+        // Python
+        "py" | "pyi" | "pyw" => Some("Python"),
+        // Java
+        "java" | "kt" | "kts" => Some("Java"),
+        // Go
+        "go" => Some("Go"),
+        // C/C++
+        "c" | "h" => Some("C"),
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some("C++"),
+        // C#
+        "cs" => Some("C#"),
+        // Web
+        "html" | "htm" | "xhtml" => Some("HTML"),
+        "css" | "scss" | "sass" | "less" => Some("CSS"),
+        "vue" => Some("Vue"),
+        "svelte" => Some("Svelte"),
+        // Shell
+        "sh" | "bash" | "zsh" | "fish" => Some("Shell"),
+        "ps1" | "psm1" | "psd1" => Some("PowerShell"),
+        // Config/Data
+        "json" => Some("JSON"),
+        "yaml" | "yml" => Some("YAML"),
+        "toml" => Some("TOML"),
+        "xml" => Some("XML"),
+        "md" | "markdown" => Some("Markdown"),
+        // Other
+        "sql" => Some("SQL"),
+        "rb" => Some("Ruby"),
+        "php" => Some("PHP"),
+        "swift" => Some("Swift"),
+        "dart" => Some("Dart"),
+        "r" => Some("R"),
+        "scala" => Some("Scala"),
+        "lua" => Some("Lua"),
+        "ex" | "exs" => Some("Elixir"),
+        "erl" | "hrl" => Some("Erlang"),
+        "fs" | "fsi" | "fsx" => Some("F#"),
+        _ => None,
+    }
+}
+
+// 检查目录是否应该被跳过
+fn should_skip_dir_for_stats(path: &Path) -> bool {
+    let skip = [
+        ".git",
+        "node_modules",
+        "target",
+        ".venv",
+        "venv",
+        ".idea",
+        ".vscode",
+        "dist",
+        "build",
+        "out",
+        "bin",
+        "obj",
+        ".next",
+        ".nuxt",
+        "vendor",
+        "coverage",
+        ".cache",
+        "temp",
+        "tmp",
+        "__pycache__",
+        ".pytest_cache",
+        "node_modules_cache",
+        ".gradle",
+        "gradle",
+        "mvn",
+        ".m2",
+    ];
+    match path.file_name().and_then(|n| n.to_str()) {
+        Some(name) => skip.contains(&name) || name.starts_with('.') && name != ".vscode" && name != ".idea",
+        None => false,
+    }
+}
+
+// 统计单个文件的语言信息
+fn count_file_lines(path: &Path) -> Option<(&'static str, u64)> {
+    let ext = path.extension()?.to_str()?;
+    let language = get_language_from_extension(ext)?;
+
+    // 读取文件内容并计算行数
+    let content = fs::read_to_string(path).ok()?;
+    let lines = content.lines().count() as u64;
+
+    Some((language, lines))
+}
+
+// 递归扫描项目目录统计语言
+fn scan_project_languages(path: &Path) -> Result<HashMap<String, (u64, u32)>, String> {
+    let mut language_data: HashMap<String, (u64, u32)> = HashMap::new();
+
+    fn scan_dir(
+        dir: &Path,
+        language_data: &mut HashMap<String, (u64, u32)>,
+        depth: u32,
+        max_depth: u32,
+    ) -> Result<(), String> {
+        if depth > max_depth || should_skip_dir_for_stats(dir) {
+            return Ok(());
+        }
+
+        let entries = fs::read_dir(dir)
+            .map_err(|e| format!("无法读取目录 {}: {}", dir.display(), e))?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("无法读取目录项: {}", e))?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                scan_dir(&path, language_data, depth + 1, max_depth)?;
+            } else if path.is_file() {
+                if let Some((language, lines)) = count_file_lines(&path) {
+                    let entry = language_data.entry(language.to_string()).or_insert((0, 0));
+                    entry.0 += lines;
+                    entry.1 += 1;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    scan_dir(path, &mut language_data, 0, 50)?;
+    Ok(language_data)
+}
+
+#[tauri::command]
+fn scan_project_language_stats(project_id: String, state: State<'_, AppState>) -> Result<LanguageStats, String> {
+    let mut store = state.store.lock().expect("store lock poisoned");
+
+    let project = store
+        .projects
+        .iter()
+        .find(|p| p.id == project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+
+    let project_path = Path::new(&project.path);
+    if !project_path.exists() || !project_path.is_dir() {
+        return Err("项目路径不存在或不是目录".to_string());
+    }
+
+    // 扫描语言统计
+    let language_data = scan_project_languages(project_path)
+        .map_err(|e| format!("扫描语言统计失败: {}", e))?;
+
+    let total_lines: u64 = language_data.values().map(|(lines, _)| *lines).sum();
+
+    let mut languages: Vec<LanguageEntry> = language_data
+        .into_iter()
+        .map(|(language, (lines, files))| {
+            let percentage = if total_lines > 0 {
+                (lines as f64 / total_lines as f64) * 100.0
+            } else {
+                0.0
+            };
+            LanguageEntry {
+                language,
+                lines,
+                files,
+                percentage,
+            }
+        })
+        .collect();
+
+    // 按行数降序排序
+    languages.sort_by(|a, b| b.lines.cmp(&a.lines));
+
+    let stats = LanguageStats {
+        total_lines,
+        languages,
+        scanned_at: now_iso(),
+    };
+
+    // 更新项目的语言统计信息
+    let project_idx = store
+        .projects
+        .iter()
+        .position(|p| p.id == project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+
+    store.projects[project_idx].metadata.language_stats = Some(stats.clone());
+    save_store(&state.file_path, &store)?;
+
+    Ok(stats)
+}
+
+#[tauri::command]
+fn get_project_language_stats(project_id: String, state: State<'_, AppState>) -> Result<Option<LanguageStats>, String> {
+    let store = state.store.lock().expect("store lock poisoned");
+
+    let project = store
+        .projects
+        .iter()
+        .find(|p| p.id == project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+
+    Ok(project.metadata.language_stats.clone())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1861,6 +2158,16 @@ pub fn run() {
             if let Some(main_win) = app.get_webview_window("main") {
                 let win = main_win.clone();
                 main_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win.hide();
+                    }
+                });
+            }
+
+            if let Some(mini_win) = app.get_webview_window("mini") {
+                let win = mini_win.clone();
+                mini_win.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = win.hide();
@@ -1899,6 +2206,8 @@ pub fn run() {
             load_mini_window_position,
             switch_to_mini_window,
             switch_to_main_window,
+            scan_project_language_stats,
+            get_project_language_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

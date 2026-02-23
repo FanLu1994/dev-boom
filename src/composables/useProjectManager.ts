@@ -11,6 +11,7 @@ import {
   removeIde,
   removeProject,
   scanProjects as scanProjectsApi,
+  scanProjectLanguageStats,
   setIdeIconFromFile,
   setProjectIdePreferences,
   toggleProjectFavorite,
@@ -19,7 +20,7 @@ import type { IdeConfig, IdeForm, Project, ProjectForm } from "../types/project"
 
 const EMPTY_PROJECT_FORM: ProjectForm = {
   path: "",
-  maxDepth: 3,
+  maxDepth: 1,
 };
 
 const EMPTY_IDE_FORM: IdeForm = {
@@ -47,6 +48,16 @@ export function useProjectManager() {
   const showLaunchDialog = ref(false);
   const launchProjectTarget = ref<Project | null>(null);
   const launchSelectedIdeIds = ref<string[]>([]);
+
+  // 语言统计相关状态
+  const showLanguageStatsDialog = ref(false);
+  const languageStatsProjectId = ref<string | null>(null);
+  const scanningLanguageStats = ref(false);
+
+  // IDE 扫描相关状态
+  const scanningIdes = ref(false);
+  const scanResults = ref<IdeConfig[]>([]);
+  const scanMessage = ref("");
 
   const searchText = ref("");
   const favoritesOnly = ref(false);
@@ -149,10 +160,29 @@ export function useProjectManager() {
 
     try {
       const added = await scanProjectsApi(projectForm.value.path, projectForm.value.maxDepth);
-      const total = Array.isArray(added) ? added.length : 0;
+      const projects = Array.isArray(added) ? added : [];
       projectForm.value = { ...EMPTY_PROJECT_FORM };
       showProjectDialog.value = false;
-      errorMessage.value = total ? `扫描完成，新增 ${total} 个项目` : "扫描完成，未发现新项目";
+
+      // 统计新项目和更新的项目
+      const now = Date.now();
+      const newCount = projects.filter((p: Project) => {
+        const createdAt = new Date(p.createdAt).getTime();
+        return Math.abs(createdAt - now) < 5000; // 5秒内创建的算是新项目
+      }).length;
+      const updatedCount = projects.length - newCount;
+
+      let message = "";
+      if (newCount > 0 && updatedCount > 0) {
+        message = `扫描完成，新增 ${newCount} 个项目，更新 ${updatedCount} 个项目的语言统计`;
+      } else if (newCount > 0) {
+        message = `扫描完成，新增 ${newCount} 个项目`;
+      } else if (updatedCount > 0) {
+        message = `扫描完成，更新了 ${updatedCount} 个项目的语言统计`;
+      } else {
+        message = "扫描完成，未发现新项目";
+      }
+      errorMessage.value = message;
       await loadData();
     } catch (error) {
       setError("扫描导入失败", error);
@@ -172,16 +202,25 @@ export function useProjectManager() {
 
   async function autoScanIdes() {
     try {
+      scanningIdes.value = true;
+      scanResults.value = [];
+      scanMessage.value = "";
+
       const added = await addDetectedIdes();
       const count = Array.isArray(added) ? added.length : 0;
+
       if (count > 0) {
+        scanResults.value = added;
+        scanMessage.value = `成功发现 ${count} 个新的 IDE`;
         await loadData();
-        errorMessage.value = `成功添加 ${count} 个 IDE`;
       } else {
-        errorMessage.value = "未发现新的 IDE";
+        scanMessage.value = "未发现新的 IDE，请尝试手动添加";
       }
     } catch (error) {
+      scanMessage.value = "扫描 IDE 失败";
       setError("扫描 IDE 失败", error);
+    } finally {
+      scanningIdes.value = false;
     }
   }
 
@@ -259,6 +298,37 @@ export function useProjectManager() {
     }
   }
 
+  function openLanguageStatsDialog(projectId: string) {
+    languageStatsProjectId.value = projectId;
+    showLanguageStatsDialog.value = true;
+  }
+
+  function closeLanguageStatsDialog() {
+    showLanguageStatsDialog.value = false;
+    languageStatsProjectId.value = null;
+  }
+
+  async function refreshLanguageStats(projectId: string) {
+    if (!projectId) return;
+
+    scanningLanguageStats.value = true;
+    errorMessage.value = "";
+    try {
+      await scanProjectLanguageStats(projectId);
+      await loadData();
+      errorMessage.value = "语言统计已更新";
+    } catch (error) {
+      setError("统计语言分布失败", error);
+    } finally {
+      scanningLanguageStats.value = false;
+    }
+  }
+
+  const languageStatsProject = computed(() => {
+    if (!languageStatsProjectId.value) return null;
+    return projects.value.find(p => p.id === languageStatsProjectId.value) || null;
+  });
+
   return {
     ides,
     loading,
@@ -268,6 +338,12 @@ export function useProjectManager() {
     showLaunchDialog,
     launchProjectTarget,
     launchSelectedIdeIds,
+    showLanguageStatsDialog,
+    languageStatsProject,
+    scanningLanguageStats,
+    scanningIdes,
+    scanResults,
+    scanMessage,
     searchText,
     favoritesOnly,
     projectForm,
@@ -288,5 +364,8 @@ export function useProjectManager() {
     confirmLaunchProject,
     onOpenFolder,
     onOpenTerminal,
+    openLanguageStatsDialog,
+    closeLanguageStatsDialog,
+    refreshLanguageStats,
   };
 }

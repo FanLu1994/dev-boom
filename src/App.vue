@@ -2,6 +2,7 @@
 import { onMounted } from "vue";
 import AppTitleBar from "./components/AppTitleBar.vue";
 import IdeDialog from "./components/IdeDialog.vue";
+import LanguageStats from "./components/LanguageStats.vue";
 import LaunchProjectDialog from "./components/LaunchProjectDialog.vue";
 import ProjectDialog from "./components/ProjectDialog.vue";
 import ProjectGroupList from "./components/ProjectGroupList.vue";
@@ -22,6 +23,12 @@ const {
   showLaunchDialog,
   launchProjectTarget,
   launchSelectedIdeIds,
+  showLanguageStatsDialog,
+  languageStatsProject,
+  scanningLanguageStats,
+  scanningIdes,
+  scanResults,
+  scanMessage,
   searchText,
   favoritesOnly,
   projectForm,
@@ -42,6 +49,9 @@ const {
   confirmLaunchProject,
   onOpenFolder,
   onOpenTerminal,
+  openLanguageStatsDialog,
+  closeLanguageStatsDialog,
+  refreshLanguageStats,
 } = manager;
 
 function formatLastModified(value: string | null) {
@@ -91,6 +101,7 @@ onMounted(async () => {
         @launch="openLaunchDialog"
         @open-folder="onOpenFolder"
         @open-terminal="onOpenTerminal"
+        @show-language-stats="openLanguageStatsDialog"
       />
     </section>
 
@@ -107,6 +118,9 @@ onMounted(async () => {
       :visible="showIdeDialog"
       :form="ideForm"
       :ides="ides"
+      :scan-results="scanResults"
+      :scanning="scanningIdes"
+      :scan-message="scanMessage"
       @close="showIdeDialog = false"
       @submit="createIde"
       @remove="onRemoveIde"
@@ -128,5 +142,42 @@ onMounted(async () => {
       @confirm="confirmLaunchProject"
       @update:selected-ide-ids="launchSelectedIdeIds = $event"
     />
+
+    <Teleport to="body">
+      <div v-if="showLanguageStatsDialog && languageStatsProject" class="dialog-overlay" @click.self="closeLanguageStatsDialog">
+        <div class="dialog-content">
+          <LanguageStats
+            :project-id="languageStatsProject.id"
+            :stats="languageStatsProject.metadata.languageStats"
+            :loading="scanningLanguageStats"
+            @refresh="refreshLanguageStats"
+            @close="closeLanguageStatsDialog"
+          />
+        </div>
+      </div>
+    </Teleport>
   </main>
 </template>
+
+<style scoped>
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.dialog-content {
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: auto;
+}
+</style>

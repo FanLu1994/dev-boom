@@ -2,10 +2,24 @@ export type ProjectType = "Rust" | "Nodejs" | "Python" | "Java" | "Go" | "Dotnet
 export type IdeCategory = "Gui" | "Cli" | "Terminal" | "Browser";
 export type ThemeMode = "light" | "dark";
 
+export interface LanguageEntry {
+  language: string;
+  lines: number;
+  files: number;
+  percentage: number;
+}
+
+export interface LanguageStats {
+  totalLines: number;
+  languages: LanguageEntry[];
+  scannedAt: string;
+}
+
 export interface ProjectMetadata {
   idePreferences: string[];
   gitUrl: string | null;
   description: string | null;
+  languageStats: LanguageStats | null;
 }
 
 export interface Project {

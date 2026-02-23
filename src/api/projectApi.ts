@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { IdeConfig, IdeForm, Project } from "../types/project";
+import type { IdeConfig, IdeForm, LanguageStats, Project } from "../types/project";
 
 export async function getProjects() {
   return invoke<Project[]>("get_projects");
@@ -55,4 +55,12 @@ export async function setIdeIconFromFile(ideId: string, filePath: string) {
 
 export async function removeIde(ideId: string) {
   return invoke("remove_ide", { ideId });
+}
+
+export async function scanProjectLanguageStats(projectId: string) {
+  return invoke<LanguageStats>("scan_project_language_stats", { projectId });
+}
+
+export async function getProjectLanguageStats(projectId: string) {
+  return invoke<LanguageStats | null>("get_project_language_stats", { projectId });
 }

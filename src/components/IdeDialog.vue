@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { IdeCategory, IdeConfig, IdeForm } from "../types/project";
-import { IconSearch, IconFolder, IconSettings, IconPlus, IconDeviceDesktop, IconTerminal, IconBrowser, IconCode, IconX } from "@tabler/icons-vue";
+import { IconSearch, IconFolder, IconSettings, IconPlus, IconDeviceDesktop, IconTerminal, IconBrowser, IconCode, IconX, IconCheck, IconAlertCircle } from "@tabler/icons-vue";
 
 defineProps<{
   visible: boolean;
   form: IdeForm;
   ides: IdeConfig[];
+  scanResults?: IdeConfig[];
+  scanning?: boolean;
+  scanMessage?: string;
 }>();
 
 defineEmits<{
@@ -94,14 +97,57 @@ function getCategoryColor(category: IdeCategory) {
       </div>
 
       <div class="ide-manager-actions">
-        <button type="button" class="btn ghost small" @click="$emit('scan')">
+        <button type="button" class="btn ghost small" @click="$emit('scan')" :disabled="scanning">
           <IconSearch :size="14" style="margin-right: 4px;" />
-          扫描 IDE
+          {{ scanning ? '扫描中...' : '扫描 IDE' }}
         </button>
         <button type="button" class="btn primary small" @click="openAddDialog">
           <IconPlus :size="14" style="margin-right: 4px;" />
           添加 IDE
         </button>
+      </div>
+
+      <!-- 扫描结果显示 -->
+      <div v-if="scanMessage || (scanResults && scanResults.length > 0)" class="scan-results">
+        <div v-if="scanMessage" class="scan-message">
+          <component :is="scanResults && scanResults.length > 0 ? IconCheck : IconAlertCircle" :size="16" />
+          <span>{{ scanMessage }}</span>
+        </div>
+        <div v-if="scanResults && scanResults.length > 0" class="scan-results-list">
+          <div class="scan-results-header">
+            <span class="scan-results-title">发现 {{ scanResults.length }} 个新 IDE</span>
+          </div>
+          <div class="scan-results-items">
+            <div
+              v-for="ide in scanResults"
+              :key="ide.id"
+              class="scan-result-item"
+            >
+              <div class="scan-result-icon">
+                <img
+                  v-if="ide.icon"
+                  :src="ide.icon"
+                  :alt="ide.name"
+                  class="scan-result-icon-img"
+                />
+                <span v-else class="scan-result-icon-fallback">{{ ideShortName(ide.name) }}</span>
+              </div>
+              <div class="scan-result-info">
+                <div class="scan-result-name">{{ ide.name }}</div>
+                <div class="scan-result-path" :title="ide.executable">{{ ide.executable }}</div>
+              </div>
+              <div class="scan-result-category">
+                <span
+                  class="scan-category-tag"
+                  :style="{ background: getCategoryColor(ide.category) }"
+                >
+                  <component :is="getCategoryIcon(ide.category)" :size="11" style="margin-right: 4px;" />
+                  {{ getCategoryLabel(ide.category) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- IDE 卡片网格 -->
@@ -258,3 +304,132 @@ function getCategoryColor(category: IdeCategory) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.scan-results {
+  margin-bottom: 16px;
+}
+
+.scan-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.scan-message svg {
+  flex-shrink: 0;
+}
+
+.scan-message svg:first-child {
+  color: var(--success);
+}
+
+.scan-message:has(svg:nth-child(2)) svg:first-child {
+  color: var(--warning);
+}
+
+.scan-results-list {
+  margin-top: 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.scan-results-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.scan-results-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.scan-results-items {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.scan-result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+}
+
+.scan-result-item:last-child {
+  border-bottom: none;
+}
+
+.scan-result-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.scan-result-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scan-result-icon-img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.scan-result-icon-fallback {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.scan-result-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.scan-result-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 2px;
+}
+
+.scan-result-path {
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scan-result-category {
+  flex-shrink: 0;
+}
+
+.scan-category-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--fg);
+}
+</style>

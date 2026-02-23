@@ -14,6 +14,7 @@ defineEmits<{
   launch: [project: Project];
   openFolder: [path: string];
   openTerminal: [path: string];
+  showLanguageStats: [projectId: string];
 }>();
 </script>
 
@@ -31,6 +32,7 @@ defineEmits<{
         @launch="(project) => $emit('launch', project)"
         @open-folder="(path) => $emit('openFolder', path)"
         @open-terminal="(path) => $emit('openTerminal', path)"
+        @show-language-stats="(projectId) => $emit('showLanguageStats', projectId)"
       />
     </div>
   </section>

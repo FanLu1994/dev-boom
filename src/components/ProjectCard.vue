@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { IdeConfig, Project } from "../types/project";
-import { IconStar, IconStarFilled, IconFolder, IconTerminal, IconTrash } from "@tabler/icons-vue";
+import { IconStar, IconStarFilled, IconFolder, IconTerminal, IconTrash, IconCode } from "@tabler/icons-vue";
 
 defineEmits<{
   toggleFavorite: [projectId: string];
@@ -9,6 +9,7 @@ defineEmits<{
   launch: [project: Project];
   openFolder: [path: string];
   openTerminal: [path: string];
+  showLanguageStats: [projectId: string];
 }>();
 
 const props = defineProps<{
@@ -31,6 +32,14 @@ function ideShortName(name: string) {
 
 function markIconBroken(ideId: string) {
   brokenIconIds.value[ideId] = true;
+}
+
+function getLanguageSummary() {
+  const stats = props.project.metadata.languageStats;
+  if (!stats || stats.languages.length === 0) return null;
+
+  const topLanguages = stats.languages.slice(0, 3);
+  return topLanguages.map(lang => `${lang.language} ${lang.percentage.toFixed(0)}%`).join(" · ");
 }
 </script>
 
@@ -67,9 +76,21 @@ function markIconBroken(ideId: string) {
       <button class="btn ghost small" @click.stop="$emit('openFolder', project.path)" title="文件夹">
         <IconFolder :size="15" />
       </button>
+      <button
+        class="btn ghost small"
+        @click.stop="$emit('showLanguageStats', project.id)"
+        title="语言统计"
+      >
+        <IconCode :size="15" />
+      </button>
       <button class="btn ghost small danger-text" @click.stop="$emit('remove', project.id)" title="移除">
         <IconTrash :size="15" />
       </button>
+    </div>
+
+    <div v-if="getLanguageSummary()" class="language-summary">
+      <IconCode :size="12" />
+      <span>{{ getLanguageSummary() }}</span>
     </div>
 
     <div class="quick-ide compact">
@@ -90,3 +111,28 @@ function markIconBroken(ideId: string) {
     </div>
   </article>
 </template>
+
+<style scoped>
+.language-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.language-summary svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.language-summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

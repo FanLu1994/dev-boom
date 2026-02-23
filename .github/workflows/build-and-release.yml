@@ -13,46 +13,9 @@ on:
         default: false
 
 jobs:
-  check-build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest]
-        # 可以添加其他平台
-        # os: [windows-latest, macos-latest, ubuntu-latest]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install pnpm
-        run: npm install -g pnpm@9
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-
-      - name: Rust Cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install frontend dependencies
-        run: pnpm install
-
-      - name: Build application (check)
-        run: pnpm tauri build --debug
-
-  create-release:
-    needs: check-build
+  build-and-release:
     if: |
-      contains(github.ref, 'refs/tags/v') ||
-      (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+      contains(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     permissions:
       contents: write

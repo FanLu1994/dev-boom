@@ -2,8 +2,7 @@ mod tray;
 
 use std::{
     collections::{HashMap, HashSet},
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
     sync::Mutex,
@@ -19,12 +18,12 @@ use uuid::Uuid;
 use windows::{
     core::PCWSTR,
     Win32::Graphics::Gdi::{
-        DeleteObject, GetDC, ReleaseDC, CreateCompatibleDC, SelectObject, DeleteDC,
-        CreateDIBSection, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, GetObjectW,
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, GetObjectW, ReleaseDC,
+        SelectObject, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
     },
+    Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES,
     Win32::UI::Shell::{SHGetFileInfoW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES},
     Win32::UI::WindowsAndMessaging::{DestroyIcon, HICON},
-    Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -414,7 +413,11 @@ fn find_executable_in_path(command_name: &str) -> Option<PathBuf> {
             continue;
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let lines: Vec<&str> = stdout.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
+        let lines: Vec<&str> = stdout
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
         if let Some(best) = lines.iter().find(|line| {
             let lower = line.to_ascii_lowercase();
             lower.ends_with(".cmd") || lower.ends_with(".exe") || lower.ends_with(".bat")
@@ -458,7 +461,8 @@ fn resolve_icon_source_path(executable_path: &Path, executable_name: &str) -> Pa
 
     // 对脚本 shim（.cmd/.bat/.ps1）优先尝试找到同名 .exe 作为图标来源
     if matches!(ext.as_str(), "cmd" | "bat" | "ps1") {
-        if let (Some(parent), Some(stem)) = (executable_path.parent(), executable_path.file_stem()) {
+        if let (Some(parent), Some(stem)) = (executable_path.parent(), executable_path.file_stem())
+        {
             let sibling = parent.join(format!("{}.exe", stem.to_string_lossy()));
             if sibling.exists() {
                 return sibling;
@@ -519,8 +523,8 @@ fn extract_icon_from_exe(exe_path: &Path) -> Option<String> {
 
 #[cfg(target_os = "windows")]
 unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
-    use image::ImageEncoder;
     use image::codecs::png::PngEncoder;
+    use image::ImageEncoder;
     use std::ptr::null_mut;
 
     let hdc = GetDC(None);
@@ -558,14 +562,7 @@ unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
             bmiColors: [Default::default()],
         };
 
-        let hbitmap = match CreateDIBSection(
-            mem_dc,
-            &bmi,
-            DIB_RGB_COLORS,
-            &mut ppv_bits,
-            None,
-            0,
-        ) {
+        let hbitmap = match CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS, &mut ppv_bits, None, 0) {
             Ok(v) => v,
             Err(_) => {
                 if !icon_info.hbmColor.is_invalid() {
@@ -634,7 +631,11 @@ unsafe fn extract_hicon_to_png(hicon: HICON) -> Option<String> {
             } else {
                 for chunk in rgba_pixels.chunks_mut(4) {
                     // 最后兜底：仅在像素不是纯黑时设为不透明，避免整图黑块。
-                    chunk[3] = if chunk[0] == 0 && chunk[1] == 0 && chunk[2] == 0 { 0 } else { 255 };
+                    chunk[3] = if chunk[0] == 0 && chunk[1] == 0 && chunk[2] == 0 {
+                        0
+                    } else {
+                        255
+                    };
                 }
             }
         } else {
@@ -851,7 +852,11 @@ fn ide_icon_cache_dir(store_file_path: &Path) -> PathBuf {
 }
 
 fn decode_ide_icon_cache_mime(path: &Path) -> &'static str {
-    match path.extension().and_then(|v| v.to_str()).map(|s| s.to_ascii_lowercase()) {
+    match path
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|s| s.to_ascii_lowercase())
+    {
         Some(ext) if ext == "svg" => "image/svg+xml",
         Some(ext) if ext == "ico" => "image/x-icon",
         Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
@@ -876,8 +881,9 @@ fn image_mime_by_extension(path: &Path) -> Option<&'static str> {
 }
 
 fn image_file_to_data_url(path: &Path) -> Result<String, String> {
-    let mime = image_mime_by_extension(path)
-        .ok_or_else(|| "仅支持 png/svg/ico/jpg/webp 图标文件，或 exe/cmd/bat/ps1 可执行文件".to_string())?;
+    let mime = image_mime_by_extension(path).ok_or_else(|| {
+        "仅支持 png/svg/ico/jpg/webp 图标文件，或 exe/cmd/bat/ps1 可执行文件".to_string()
+    })?;
     let bytes = fs::read(path).map_err(|e| format!("读取图标文件失败: {e}"))?;
     if bytes.is_empty() {
         return Err("图标文件为空".to_string());
@@ -903,7 +909,8 @@ fn icon_data_url_from_user_file(path: &Path) -> Result<String, String> {
             .and_then(|v| v.to_str())
             .unwrap_or("app.exe");
         let source = resolve_icon_source_path(path, display_name);
-        return extract_icon_from_exe(&source).ok_or_else(|| "从可执行文件提取图标失败".to_string());
+        return extract_icon_from_exe(&source)
+            .ok_or_else(|| "从可执行文件提取图标失败".to_string());
     }
 
     image_file_to_data_url(path)
@@ -942,7 +949,10 @@ fn online_icon_urls_for_ide(ide: &IdeConfig) -> Vec<&'static str> {
     let executable = ide.executable.to_ascii_lowercase();
     let merged = format!("{id} {name} {executable}");
 
-    if merged.contains("vscode") || merged.contains("visual studio code") || merged.contains("code.exe") {
+    if merged.contains("vscode")
+        || merged.contains("visual studio code")
+        || merged.contains("code.exe")
+    {
         return vec![
             "https://code.visualstudio.com/favicon.ico",
             "https://code.visualstudio.com/assets/images/code-stable.png",
@@ -1036,7 +1046,11 @@ fn download_and_cache_ide_icon(store_file_path: &Path, ide: &IdeConfig) -> Optio
 
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
-        return Some(format!("data:{};source=web-v1;base64,{}", decode_ide_icon_cache_mime(&cache_path), encoded));
+        return Some(format!(
+            "data:{};source=web-v1;base64,{}",
+            decode_ide_icon_cache_mime(&cache_path),
+            encoded
+        ));
     }
 
     None
@@ -1223,7 +1237,11 @@ fn get_projects(state: State<'_, AppState>) -> Vec<Project> {
         project.last_modified = file_mtime_iso(&project.path);
     }
     let mut projects = store.projects.clone();
-    projects.sort_by(|a, b| b.last_modified.cmp(&a.last_modified).then_with(|| a.name.cmp(&b.name)));
+    projects.sort_by(|a, b| {
+        b.last_modified
+            .cmp(&a.last_modified)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     projects
 }
 
@@ -1656,7 +1674,10 @@ fn launch_with_ide(project: &Project, ide: &IdeConfig) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         {
             let mut wt = Command::new("wt");
-            wt.arg("-d").arg(&project.path).arg(&ide.executable).args(&args);
+            wt.arg("-d")
+                .arg(&project.path)
+                .arg(&ide.executable)
+                .args(&args);
             if wt.spawn().is_ok() {
                 launched = true;
             }
@@ -1800,7 +1821,7 @@ fn open_in_terminal(path: String) -> Result<(), String> {
                 "-NoExit",
                 "-NoLogo",
                 "-Command",
-                &format!("Set-Location '{}'", &path)
+                &format!("Set-Location '{}'", &path),
             ])
             .creation_flags(0x00000010) // CREATE_NEW_CONSOLE
             .spawn();
@@ -1816,7 +1837,7 @@ fn open_in_terminal(path: String) -> Result<(), String> {
                 "-NoExit",
                 "-NoLogo",
                 "-Command",
-                &format!("Set-Location '{}'", &path)
+                &format!("Set-Location '{}'", &path),
             ])
             .spawn();
 
@@ -1826,10 +1847,7 @@ fn open_in_terminal(path: String) -> Result<(), String> {
 
         // 方案3: CMD with CREATE_NEW_CONSOLE
         let result = Command::new("cmd")
-            .args([
-                "/k",
-                &format!("cd /d \"{}\"", &path)
-            ])
+            .args(["/k", &format!("cd /d \"{}\"", &path)])
             .creation_flags(0x00000010) // CREATE_NEW_CONSOLE
             .spawn();
 
@@ -2008,7 +2026,9 @@ fn should_skip_dir_for_stats(path: &Path) -> bool {
         ".m2",
     ];
     match path.file_name().and_then(|n| n.to_str()) {
-        Some(name) => skip.contains(&name) || name.starts_with('.') && name != ".vscode" && name != ".idea",
+        Some(name) => {
+            skip.contains(&name) || name.starts_with('.') && name != ".vscode" && name != ".idea"
+        }
         None => false,
     }
 }
@@ -2039,8 +2059,8 @@ fn scan_project_languages(path: &Path) -> Result<HashMap<String, (u64, u32)>, St
             return Ok(());
         }
 
-        let entries = fs::read_dir(dir)
-            .map_err(|e| format!("无法读取目录 {}: {}", dir.display(), e))?;
+        let entries =
+            fs::read_dir(dir).map_err(|e| format!("无法读取目录 {}: {}", dir.display(), e))?;
 
         for entry in entries {
             let entry = entry.map_err(|e| format!("无法读取目录项: {}", e))?;
@@ -2065,7 +2085,10 @@ fn scan_project_languages(path: &Path) -> Result<HashMap<String, (u64, u32)>, St
 }
 
 #[tauri::command]
-fn scan_project_language_stats(project_id: String, state: State<'_, AppState>) -> Result<LanguageStats, String> {
+fn scan_project_language_stats(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<LanguageStats, String> {
     let mut store = state.store.lock().expect("store lock poisoned");
 
     let project = store
@@ -2080,8 +2103,8 @@ fn scan_project_language_stats(project_id: String, state: State<'_, AppState>) -
     }
 
     // 扫描语言统计
-    let language_data = scan_project_languages(project_path)
-        .map_err(|e| format!("扫描语言统计失败: {}", e))?;
+    let language_data =
+        scan_project_languages(project_path).map_err(|e| format!("扫描语言统计失败: {}", e))?;
 
     let total_lines: u64 = language_data.values().map(|(lines, _)| *lines).sum();
 
@@ -2125,7 +2148,10 @@ fn scan_project_language_stats(project_id: String, state: State<'_, AppState>) -
 }
 
 #[tauri::command]
-fn get_project_language_stats(project_id: String, state: State<'_, AppState>) -> Result<Option<LanguageStats>, String> {
+fn get_project_language_stats(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<LanguageStats>, String> {
     let store = state.store.lock().expect("store lock poisoned");
 
     let project = store

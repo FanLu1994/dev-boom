@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { ThemeMode } from "../types/project";
-import { IconSettings, IconMinus, IconSquare, IconX, IconMoon, IconSun, IconRepeat } from "@tabler/icons-vue";
+import { IconMinus, IconSquare, IconX, IconMoon, IconSun, IconRepeat } from "@tabler/icons-vue";
 
 defineProps<{
   theme: ThemeMode;

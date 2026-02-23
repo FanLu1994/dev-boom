@@ -9,7 +9,6 @@ import ProjectToolbar from "./components/ProjectToolbar.vue";
 import { useProjectManager } from "./composables/useProjectManager";
 import { useTheme } from "./composables/useTheme";
 import { useWindowControls } from "./composables/useWindowControls";
-import { openInTerminal } from "./api/projectApi";
 
 const manager = useProjectManager();
 const { theme, applyTheme, toggleTheme } = useTheme();

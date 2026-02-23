@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { IdeConfig, Project } from "../types/project";
+import { IconStar, IconStarFilled, IconFolder, IconTerminal, IconTrash } from "@tabler/icons-vue";
 
 defineEmits<{
   toggleFavorite: [projectId: string];
   remove: [projectId: string];
   launch: [project: Project];
   openFolder: [path: string];
+  openTerminal: [path: string];
 }>();
 
 const props = defineProps<{
@@ -43,7 +45,9 @@ function markIconBroken(ideId: string) {
   >
     <div class="card-top">
       <span class="project-bullet" :style="{ background: project.favorite ? '#f59e0b' : '#2563eb' }"></span>
-      <button class="icon-btn" @click.stop="$emit('toggleFavorite', project.id)">{{ project.favorite ? "★" : "☆" }}</button>
+      <button class="icon-btn" @click.stop="$emit('toggleFavorite', project.id)">
+        <component :is="project.favorite ? IconStarFilled : IconStar" :size="16" />
+      </button>
     </div>
 
     <h3 class="project-name">{{ project.name }}</h3>
@@ -57,8 +61,15 @@ function markIconBroken(ideId: string) {
 
     <div class="card-footer">
       <button class="btn primary small" @click.stop="$emit('launch', project)">打开</button>
-      <button class="btn ghost small" @click.stop="$emit('openFolder', project.path)">文件夹</button>
-      <button class="btn ghost small danger-text" @click.stop="$emit('remove', project.id)">移除</button>
+      <button class="btn ghost small" @click.stop="$emit('openTerminal', project.path)" title="终端">
+        <IconTerminal :size="15" />
+      </button>
+      <button class="btn ghost small" @click.stop="$emit('openFolder', project.path)" title="文件夹">
+        <IconFolder :size="15" />
+      </button>
+      <button class="btn ghost small danger-text" @click.stop="$emit('remove', project.id)" title="移除">
+        <IconTrash :size="15" />
+      </button>
     </div>
 
     <div class="quick-ide compact">

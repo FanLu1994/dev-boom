@@ -1701,6 +1701,92 @@ fn open_in_file_manager(path: String) -> Result<(), String> {
     Err("当前系统不支持打开文件管理器".to_string())
 }
 
+#[tauri::command]
+fn open_in_terminal(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        // 方案1: 直接启动 PowerShell，使用 CREATE_NEW_CONSOLE 标志创建新窗口
+        let result = Command::new("powershell")
+            .args([
+                "-NoExit",
+                "-NoLogo",
+                "-Command",
+                &format!("Set-Location '{}'", &path)
+            ])
+            .creation_flags(0x00000010) // CREATE_NEW_CONSOLE
+            .spawn();
+
+        if result.is_ok() {
+            return Ok(());
+        }
+
+        // 方案2: Windows Terminal - 默认就是新窗口
+        let result = Command::new("wt")
+            .args([
+                "powershell",
+                "-NoExit",
+                "-NoLogo",
+                "-Command",
+                &format!("Set-Location '{}'", &path)
+            ])
+            .spawn();
+
+        if result.is_ok() {
+            return Ok(());
+        }
+
+        // 方案3: CMD with CREATE_NEW_CONSOLE
+        let result = Command::new("cmd")
+            .args([
+                "/k",
+                &format!("cd /d \"{}\"", &path)
+            ])
+            .creation_flags(0x00000010) // CREATE_NEW_CONSOLE
+            .spawn();
+
+        if result.is_ok() {
+            return Ok(());
+        }
+
+        return Err("无法打开终端".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg("-a")
+            .arg("Terminal")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开终端失败: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // 尝试常见的 Linux 终端，使用 --new-window 或直接启动新实例
+        let terminals = [
+            ("gnome-terminal", vec!["--working-directory", &path]),
+            ("konsole", vec!["--new-window", "--workdir", &path]),
+            ("xfce4-terminal", vec!["--working-directory", &path]),
+            ("xterm", vec!["-e", &format!("cd '{}'", &path)]),
+        ];
+
+        for (term, args) in terminals {
+            let mut cmd = Command::new(term);
+            for arg in args {
+                cmd.arg(arg);
+            }
+            if cmd.spawn().is_ok() {
+                return Ok(());
+            }
+        }
+        return Err("未找到可用的终端".to_string());
+    }
+    #[allow(unreachable_code)]
+    Err("当前系统不支持打开终端".to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MiniWindowPosition {
     x: i32,
@@ -1784,40 +1870,8 @@ pub fn run() {
 
             #[cfg(desktop)]
             {
-                use tauri_plugin_global_shortcut::{
-                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-                };
-                let shortcut =
-                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyP);
-                let app_handle = app.handle().clone();
-                app.handle().plugin(
-                    tauri_plugin_global_shortcut::Builder::new()
-                        .with_handler(move |_app, _shortcut, event| {
-                            if event.state() == ShortcutState::Pressed {
-                                let mini = app_handle.get_webview_window("mini");
-                                let main_win = app_handle.get_webview_window("main");
-                                let mini_visible = mini
-                                    .as_ref()
-                                    .and_then(|w| w.is_visible().ok())
-                                    .unwrap_or(false);
-                                if mini_visible {
-                                    let _ = mini.as_ref().map(|w| w.hide());
-                                    let _ = main_win.as_ref().map(|w| {
-                                        w.show();
-                                        w.set_focus()
-                                    });
-                                } else {
-                                    let _ = main_win.as_ref().map(|w| w.hide());
-                                    let _ = mini.as_ref().map(|w| {
-                                        w.show();
-                                        w.set_focus()
-                                    });
-                                }
-                            }
-                        })
-                        .build(),
-                )?;
-                app.global_shortcut().register(shortcut)?;
+                // 全局快捷键功能已移除
+                // 如需重新启用，请确保正确处理热键注册冲突
             }
 
             Ok(())
@@ -1837,6 +1891,7 @@ pub fn run() {
             reorder_projects,
             launch_project,
             open_in_file_manager,
+            open_in_terminal,
             scan_ides,
             add_detected_ides,
             set_project_ide_preferences,

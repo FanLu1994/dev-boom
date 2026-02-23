@@ -37,6 +37,10 @@ export async function openInFileManager(path: string) {
   return invoke("open_in_file_manager", { path });
 }
 
+export async function openInTerminal(path: string) {
+  return invoke("open_in_terminal", { path });
+}
+
 export async function scanIdes() {
   return invoke<IdeConfig[]>("scan_ides");
 }

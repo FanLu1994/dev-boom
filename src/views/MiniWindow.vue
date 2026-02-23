@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Project, IdeConfig } from "../types/project";
 import { TYPE_COLORS } from "../types/project";
 import { useTheme } from "../composables/useTheme";
+import { IconMoon, IconSun, IconRepeat, IconSearch, IconStar } from "@tabler/icons-vue";
 
 const { theme, applyTheme, toggleTheme } = useTheme();
 
@@ -167,32 +168,44 @@ onMounted(async () => {
       <div class="mini-brand">
         <span class="mini-dot"></span>
         <span class="mini-title">Dev Boom</span>
-        <span class="mini-stats">{{ totalCount }}项 · {{ favoriteCount }}★</span>
+        <span class="mini-stats">{{ totalCount }}项 · {{ favoriteCount }} <IconStar :size="10" style="vertical-align: middle;" /></span>
       </div>
       <div class="mini-header-actions">
         <button
           class="mini-btn"
           @click="toggleTheme"
           :title="theme === 'light' ? '深色模式' : '浅色模式'"
-        >{{ theme === "light" ? "☾" : "☀" }}</button>
-        <button class="mini-btn" @click="switchToMain" title="切换到主窗口">⇄</button>
-        <button class="mini-close" @click="hideMini" title="隐藏">✕</button>
+        >
+          <component :is="theme === 'light' ? IconMoon : IconSun" :size="14" />
+        </button>
+        <button class="mini-btn" @click="switchToMain" title="切换到主窗口">
+          <IconRepeat :size="14" />
+        </button>
+        <button class="mini-close" @click="hideMini" title="隐藏">
+          ✕
+        </button>
       </div>
     </header>
 
     <div class="mini-toolbar">
-      <input
-        v-model="searchText"
-        type="text"
-        placeholder="搜索项目…"
-        class="mini-search-input"
-      />
+      <div style="position: relative; flex: 1;">
+        <IconSearch :size="14" style="position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.5;" />
+        <input
+          v-model="searchText"
+          type="text"
+          placeholder="搜索项目…"
+          class="mini-search-input"
+          style="padding-left: 28px;"
+        />
+      </div>
       <button
         class="mini-filter-btn"
         :class="{ active: favoritesOnly }"
         @click="favoritesOnly = !favoritesOnly"
         title="只看收藏"
-      >★</button>
+      >
+        <IconStar :size="12" :fill="favoritesOnly ? 'currentColor' : 'none'" />
+      </button>
     </div>
 
     <div class="mini-list">

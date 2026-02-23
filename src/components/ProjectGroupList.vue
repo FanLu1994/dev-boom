@@ -13,6 +13,7 @@ defineEmits<{
   remove: [projectId: string];
   launch: [project: Project];
   openFolder: [path: string];
+  openTerminal: [path: string];
 }>();
 </script>
 
@@ -29,6 +30,7 @@ defineEmits<{
         @remove="(projectId) => $emit('remove', projectId)"
         @launch="(project) => $emit('launch', project)"
         @open-folder="(path) => $emit('openFolder', path)"
+        @open-terminal="(path) => $emit('openTerminal', path)"
       />
     </div>
   </section>

@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { ThemeMode } from "../types/project";
+import { IconSettings, IconMinus, IconSquare, IconX, IconMoon, IconSun, IconRepeat } from "@tabler/icons-vue";
 
 defineProps<{
   theme: ThemeMode;
@@ -66,7 +67,7 @@ const emit = defineEmits<{
         title="切换到小窗口"
         @click="switchToMini"
       >
-        ⇄
+        <IconRepeat :size="14" />
       </button>
       <button
         class="icon-pill"
@@ -74,11 +75,17 @@ const emit = defineEmits<{
         :title="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"
         @click="$emit('toggleTheme')"
       >
-        {{ theme === "light" ? "☾" : "☀" }}
+        <component :is="theme === 'light' ? IconMoon : IconSun" :size="14" />
       </button>
-      <button class="icon-pill" @click="$emit('minimize')">-</button>
-      <button class="icon-pill" @click="$emit('maximize')">□</button>
-      <button class="icon-pill danger" @click="$emit('close')">×</button>
+      <button class="icon-pill" @click="$emit('minimize')">
+        <IconMinus :size="14" />
+      </button>
+      <button class="icon-pill" @click="$emit('maximize')">
+        <IconSquare :size="14" />
+      </button>
+      <button class="icon-pill danger" @click="$emit('close')">
+        <IconX :size="14" />
+      </button>
     </div>
   </header>
 </template>

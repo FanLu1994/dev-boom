@@ -125,6 +125,36 @@ jobs:
           echo "notes=$notes" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
+      - name: List build artifacts
+        run: |
+          echo "Available files:"
+          Get-ChildItem -Path "src-tauri\target\release" -Recurse -File | Select-Object -First 20 Name, Length
+        shell: pwsh
+
+      - name: Upload all build artifacts
+        run: |
+          $release_name = "${{ steps.get_version.outputs.version }}"
+          echo "Uploading artifacts for release: $release_name"
+
+          # Find all relevant files
+          $files = @(
+            "src-tauri/target/release/dev-boom.exe"
+            "src-tauri/target/release/bundle/nsis/*.exe"
+            "src-tauri/target/release/bundle/msi/*.msi"
+          )
+
+          foreach ($pattern in $files) {
+            $found = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
+            if ($found) {
+              foreach ($file in $found) {
+                if (Test-Path $file.FullName) {
+                  Write-Host "Would upload: $($file.Name)"
+                }
+              }
+            }
+          }
+        shell: pwsh
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -134,12 +164,9 @@ jobs:
           draft: false
           prerelease: ${{ contains(steps.get_version.outputs.version, '-') }}
           files: |
+            src-tauri/target/release/dev-boom.exe
+            src-tauri/target/release/bundle/nsis/dev-boom_*_x64-setup.exe
             src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/dev-boom_*.exe
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/*.msi
-            src-tauri/target/release/*.exe
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

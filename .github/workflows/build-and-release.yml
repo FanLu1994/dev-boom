@@ -1,0 +1,156 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a new release'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  check-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+        # 可以添加其他平台
+        # os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build application (check)
+        run: pnpm tauri build --debug
+
+  create-release:
+    needs: check-build
+    if: |
+      contains(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build application
+        run: pnpm tauri build
+
+      - name: Get version
+        id: get_version
+        run: |
+          if ("${{ github.ref }}" -match "^refs/tags/v") {
+            echo "version=${{ github.ref }}" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "version=v0.1.0-${{ github.run_number }}" >> $env:GITHUB_OUTPUT
+          fi
+        shell: pwsh
+
+      - name: Extract version name
+        id: version_name
+        run: |
+          $version = "${{ steps.get_version.outputs.version }}"
+          if ($version -match "^refs/tags/") {
+            $version = $version -replace "^refs/tags/", ""
+          }
+          echo "name=$version" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          $tag = "${{ steps.get_version.outputs.version }}"
+          $notes = "## dev-boom $tag`n`n"
+          $notes += "### 🎯 功能特性`n`n"
+          $notes += "- 项目管理器：快速扫描和管理项目`n"
+          $notes += "- IDE 集成：支持多个开发工具配置`n"
+          $notes += "- 终端集成：快速在项目目录中打开终端`n"
+          $notes += "- 收藏系统：标记常用项目`n"
+          $notes += "- 主题切换：支持浅色/深色主题`n`n"
+          $notes += "### 📦 下载说明`n`n"
+          $notes += "- **dev-boom-setup.exe**: 安装程序（推荐）`n"
+          $notes += "- **dev-boom.exe**: 便携版，无需安装`n"
+          $notes += "- **.msi**: Windows 安装包`n`n"
+          $notes += "### 🔧 系统要求`n`n"
+          $notes += "- Windows 10/11 x64`n"
+          $notes += "- 支持中国区下载`n"
+          echo "notes=$notes" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: dev-boom ${{ steps.version_name.outputs.name }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.version, '-') }}
+          files: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/dev-boom_*.exe
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/*.msi
+            src-tauri/target/release/*.exe
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release info
+        run: |
+          echo "Release created: ${{ steps.get_version.outputs.version }}"
+          echo "Release name: dev-boom ${{ steps.version_name.outputs.name }}"
+        shell: pwsh

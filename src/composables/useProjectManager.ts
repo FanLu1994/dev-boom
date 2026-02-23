@@ -7,6 +7,8 @@ import {
   getProjects,
   launchProject,
   openInFileManager,
+  openInTerminal,
+  removeIde,
   removeProject,
   scanProjects as scanProjectsApi,
   setIdeIconFromFile,
@@ -201,6 +203,15 @@ export function useProjectManager() {
     }
   }
 
+  async function onRemoveIde(ideId: string) {
+    try {
+      await removeIde(ideId);
+      await loadData();
+    } catch (error) {
+      setError("删除 IDE 失败", error);
+    }
+  }
+
   function openLaunchDialog(project: Project) {
     launchProjectTarget.value = project;
     const preferred = project.metadata.idePreferences.filter((id) => ides.value.some((ide) => ide.id === id));
@@ -240,6 +251,14 @@ export function useProjectManager() {
     }
   }
 
+  async function onOpenTerminal(path: string) {
+    try {
+      await openInTerminal(path);
+    } catch (error) {
+      setError("打开终端失败", error);
+    }
+  }
+
   return {
     ides,
     loading,
@@ -262,10 +281,12 @@ export function useProjectManager() {
     createIde,
     autoScanIdes,
     onRemoveProject,
+    onRemoveIde,
     onToggleFavorite,
     openLaunchDialog,
     closeLaunchDialog,
     confirmLaunchProject,
     onOpenFolder,
+    onOpenTerminal,
   };
 }

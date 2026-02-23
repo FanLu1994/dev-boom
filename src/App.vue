@@ -36,11 +36,13 @@ const {
   createIde,
   autoScanIdes,
   onRemoveProject,
+  onRemoveIde,
   onToggleFavorite,
   openLaunchDialog,
   closeLaunchDialog,
   confirmLaunchProject,
   onOpenFolder,
+  onOpenTerminal,
 } = manager;
 
 function formatLastModified(value: string | null) {
@@ -48,14 +50,6 @@ function formatLastModified(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "未知";
   return date.toLocaleString("zh-CN", { hour12: false });
-}
-
-async function onOpenTerminal(path: string) {
-  try {
-    await openInTerminal(path);
-  } catch (err) {
-    console.error("打开终端失败:", err);
-  }
 }
 
 onMounted(async () => {
@@ -116,6 +110,7 @@ onMounted(async () => {
       :ides="ides"
       @close="showIdeDialog = false"
       @submit="createIde"
+      @remove="onRemoveIde"
       @scan="autoScanIdes"
       @set-icon="chooseAndSetIdeIcon"
       @choose-executable="chooseIdeExecutable"

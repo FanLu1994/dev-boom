@@ -42,6 +42,16 @@
   box-sizing: border-box;
 }
 
+/* Z-Index 层级系统 */
+:root {
+  --z-titlebar: 20;
+  --z-dropdown: 50;
+  --z-dialog: 100;
+  --z-dialog-content: 101;
+  --z-dialog-secondary: 150; /* 二级弹窗 */
+  --z-toast: 200;
+}
+
 html,
 body,
 #app {
@@ -72,7 +82,7 @@ body {
   top: 10px;
   left: 12px;
   right: 12px;
-  z-index: 20;
+  z-index: var(--z-titlebar);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -137,12 +147,12 @@ h1 {
   min-width: 128px;
   border-radius: 10px;
   background: var(--panel-strong);
-  border: 1px solid color-mix(in srgb, var(--text-soft) 16%, transparent);
+  border: 1px solid var(--border-subtle);
   padding: 6px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
   display: grid;
   gap: 4px;
-  z-index: 40;
+  z-index: var(--z-dropdown);
 }
 
 .quick-add-item {
@@ -432,9 +442,22 @@ h1 {
   border-color: var(--border-hover);
 }
 
+.ide-icon-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ide-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 5px;
+}
+
 .ide-fallback {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -443,6 +466,35 @@ h1 {
   font-weight: 700;
   background: color-mix(in srgb, var(--text-soft) 18%, transparent);
   color: var(--text);
+}
+
+.ide-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ide-category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-soft) 12%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+}
+
+.ide-priority {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-soft) 10%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 28px;
+  text-align: center;
 }
 
 .ide-remove {
@@ -702,7 +754,7 @@ h1 {
   backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
-  z-index: 30;
+  z-index: var(--z-dialog);
   animation: fadeIn 180ms ease;
 }
 
@@ -725,6 +777,10 @@ h1 {
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--border-subtle);
   animation: slideUp 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: var(--z-dialog-content);
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 @keyframes slideUp {
@@ -743,19 +799,291 @@ h1 {
   max-height: min(86vh, 760px);
   overflow-y: auto;
   overflow-x: hidden;
-  gap: 12px;
-  grid-template-rows: auto minmax(180px, 1fr) auto auto;
+  gap: 14px;
+  padding: 16px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
 }
 
+/* 隐藏滚动条 */
+.ide-manager-dialog::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ide-manager-dialog::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ide-manager-dialog::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: 3px;
+}
+
+.ide-manager-dialog::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-soft) 25%, transparent);
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* IDE 管理对话框样式 */
 .ide-manager-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-subtitle {
+  font-size: 12px;
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+.close-btn {
+  flex-shrink: 0;
+}
+
+.ide-manager-actions {
+  display: flex;
   gap: 10px;
 }
 
-.ide-manager-header h2 {
+/* 二级弹窗遮罩 */
+.dialog-mask-secondary {
+  z-index: var(--z-dialog-secondary);
+  background: rgba(2, 6, 23, 0.52);
+  backdrop-filter: blur(8px);
+}
+
+/* IDE 添加对话框 */
+.ide-add-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(80vh, 600px);
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.dialog-header h3 {
   margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* 表单样式优化 */
+.ide-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.form-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-soft);
+  line-height: 1.4;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-subtitle {
+  font-size: 12px;
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+/* IDE 卡片网格 */
+.ide-grid-container {
+  min-height: 180px;
+}
+
+.ide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.ide-card {
+  border-radius: 14px;
+  background: var(--chip);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: all var(--transition-normal);
+  position: relative;
+}
+
+.ide-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.ide-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 10px;
+  background: color-mix(in srgb, var(--text-soft) 3%, transparent);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ide-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ide-card-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.ide-delete-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.ide-delete-btn:hover {
+  background: color-mix(in srgb, var(--danger) 15%, var(--chip));
+  color: var(--danger);
+}
+
+.ide-card-body {
+  padding: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ide-card-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ide-card-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ide-category-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+}
+
+.ide-priority-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-soft) 12%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ide-card-path {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-soft);
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ide-card-footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.full-width {
+  width: 100%;
+}
+
+.empty-state-large {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: var(--text-soft);
+  text-align: center;
+}
+
+.empty-state-large h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty-state-large p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .ide-table-wrap {
@@ -832,6 +1160,21 @@ h1 {
   color: var(--text-soft);
 }
 
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 16px;
+  color: var(--text-soft);
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 13px;
+}
+
 .ide-executable {
   width: 100%;
   word-break: break-all;
@@ -842,13 +1185,36 @@ h1 {
 
 .ide-create-form {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   align-content: start;
+  padding: 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-soft) 3%, transparent);
+  border: 1px solid var(--border-subtle);
 }
 
-.ide-create-form h3 {
+.form-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.form-row-inline {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 10px;
 }
 
 .folder-list {

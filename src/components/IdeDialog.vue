@@ -12,7 +12,7 @@ defineProps<{
   scanMessage?: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   close: [];
   submit: [];
   scan: [];
@@ -43,6 +43,11 @@ function openAddDialog() {
 }
 
 function closeAddDialog() {
+  showAddDialog.value = false;
+}
+
+function submitAndClose() {
+  emit('submit');
   showAddDialog.value = false;
 }
 
@@ -229,7 +234,7 @@ function getCategoryColor(category: IdeCategory) {
         </button>
       </div>
 
-      <form class="ide-add-form" @submit.prevent="(closeAddDialog(), $emit('submit'))">
+      <form class="ide-add-form" @submit.prevent="submitAndClose">
         <div class="form-group">
           <label class="form-label">IDE 名称</label>
           <input
@@ -237,13 +242,13 @@ function getCategoryColor(category: IdeCategory) {
             class="input"
             placeholder="例如：VSCode, WebStorm, IntelliJ IDEA"
             required
-            @input="$emit('update:name', ($event.target as HTMLInputElement).value)"
+            @input="emit('update:name', ($event.target as HTMLInputElement).value)"
           />
         </div>
 
         <div class="form-group">
           <label class="form-label">可执行文件</label>
-          <button type="button" class="btn ghost full-width" @click="$emit('chooseExecutable')">
+          <button type="button" class="btn ghost full-width" @click="emit('chooseExecutable')">
             <IconFolder :size="14" style="margin-right: 4px;" />
             {{ form.executable ? '更换文件' : '选择可执行文件' }}
           </button>
@@ -262,7 +267,7 @@ function getCategoryColor(category: IdeCategory) {
             <select
               :value="form.category"
               class="select"
-              @change="$emit('update:category', ($event.target as HTMLSelectElement).value as IdeCategory)"
+              @change="emit('update:category', ($event.target as HTMLSelectElement).value as IdeCategory)"
             >
               <option value="Gui">桌面应用</option>
               <option value="Cli">命令行</option>
@@ -277,7 +282,7 @@ function getCategoryColor(category: IdeCategory) {
               class="input"
               type="number"
               placeholder="越小越优先"
-              @input="$emit('update:priority', Number(($event.target as HTMLInputElement).value))"
+              @input="emit('update:priority', Number(($event.target as HTMLInputElement).value))"
             />
           </div>
         </div>
@@ -288,7 +293,7 @@ function getCategoryColor(category: IdeCategory) {
             :value="form.argsTemplate"
             class="input"
             placeholder="例如：{projectPath}"
-            @input="$emit('update:argsTemplate', ($event.target as HTMLInputElement).value)"
+            @input="emit('update:argsTemplate', ($event.target as HTMLInputElement).value)"
           />
           <p class="form-hint">可用变量：{projectPath} - 项目路径</p>
         </div>

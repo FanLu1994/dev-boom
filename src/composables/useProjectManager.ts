@@ -124,10 +124,71 @@ export function useProjectManager() {
         ],
       });
       if (!selected) return;
-      ideForm.value.executable = Array.isArray(selected) ? selected[0] ?? "" : selected;
+      const filePath = Array.isArray(selected) ? selected[0] ?? "" : selected;
+      ideForm.value.executable = filePath;
+
+      // 自动填充 IDE 名称（如果当前为空）
+      if (!ideForm.value.name.trim() && filePath) {
+        // 从路径中提取文件名（不含扩展名）
+        const fileName = filePath.split(/[/\\]/).pop() ?? "";
+        const nameWithoutExt = fileName.replace(/\.(exe|cmd|bat|ps1)$/i, "");
+        // 美化名称：将常见的 IDE 名称格式化
+        const prettyName = prettifyIdeName(nameWithoutExt);
+        ideForm.value.name = prettyName;
+      }
     } catch (error) {
       setError("选择可执行文件失败", error);
     }
+  }
+
+  function prettifyIdeName(name: string): string {
+    // 常见 IDE 名称映射
+    const knownNames: Record<string, string> = {
+      code: "Visual Studio Code",
+      "code-insiders": "VS Code Insiders",
+      cursor: "Cursor",
+      windsurf: "Windsurf",
+      idea: "IntelliJ IDEA",
+      idea64: "IntelliJ IDEA",
+      webstorm: "WebStorm",
+      webstorm64: "WebStorm",
+      pycharm: "PyCharm",
+      pycharm64: "PyCharm",
+      goland: "GoLand",
+      goland64: "GoLand",
+      clion: "CLion",
+      clion64: "CLion",
+      rider: "Rider",
+      rider64: "Rider",
+      rustrover: "RustRover",
+      rustrover64: "RustRover",
+      datagrip: "DataGrip",
+      datagrip64: "DataGrip",
+      phpstorm: "PhpStorm",
+      phpstorm64: "PhpStorm",
+      sublime_text: "Sublime Text",
+      notepad: "Notepad++",
+      "notepad++": "Notepad++",
+      atom: "Atom",
+      vim: "Vim",
+      nvim: "Neovim",
+      neovim: "Neovim",
+      emacs: "Emacs",
+      fleet: "Fleet",
+      zed: "Zed",
+      lapce: "Lapce",
+      helix: "Helix",
+    };
+
+    const lowerName = name.toLowerCase();
+    if (knownNames[lowerName]) {
+      return knownNames[lowerName];
+    }
+
+    // 默认：首字母大写，将下划线和连字符转为空格
+    return name
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   async function chooseAndSetIdeIcon(ideId: string) {

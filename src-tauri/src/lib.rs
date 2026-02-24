@@ -115,6 +115,7 @@ struct AppStore {
 struct AppState {
     file_path: PathBuf,
     store: Mutex<AppStore>,
+    last_active_window: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2163,6 +2164,25 @@ fn get_project_language_stats(
     Ok(project.metadata.language_stats.clone())
 }
 
+#[tauri::command]
+fn get_last_active_window(state: State<'_, AppState>) -> String {
+    state
+        .last_active_window
+        .lock()
+        .expect("last_active_window lock poisoned")
+        .clone()
+        .unwrap_or_else(|| "main".to_string())
+}
+
+#[tauri::command]
+fn set_last_active_window(window_id: String, state: State<'_, AppState>) {
+    let mut last_window = state
+        .last_active_window
+        .lock()
+        .expect("last_active_window lock poisoned");
+    *last_window = Some(window_id);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2177,26 +2197,51 @@ pub fn run() {
             app.manage(AppState {
                 file_path: store_path,
                 store: Mutex::new(store),
+                last_active_window: Mutex::new(Some("main".to_string())),
             });
 
             tray::create_tray(app).map_err(|e| format!("创建托盘失败: {e}"))?;
 
+            let app_handle = app.handle().clone();
+
+            // 监听主窗口事件
             if let Some(main_win) = app.get_webview_window("main") {
                 let win = main_win.clone();
+                let handle = app_handle.clone();
                 main_win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = win.hide();
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            let _ = win.hide();
+                        }
+                        tauri::WindowEvent::Focused(true) => {
+                            // 窗口获得焦点时更新最后激活窗口
+                            if let Some(state) = handle.try_state::<AppState>() {
+                                *state.last_active_window.lock().unwrap() = Some("main".to_string());
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
 
+            // 监听迷你窗口事件
             if let Some(mini_win) = app.get_webview_window("mini") {
                 let win = mini_win.clone();
+                let handle = app_handle.clone();
                 mini_win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = win.hide();
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            let _ = win.hide();
+                        }
+                        tauri::WindowEvent::Focused(true) => {
+                            // 窗口获得焦点时更新最后激活窗口
+                            if let Some(state) = handle.try_state::<AppState>() {
+                                *state.last_active_window.lock().unwrap() = Some("mini".to_string());
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
@@ -2234,6 +2279,8 @@ pub fn run() {
             switch_to_main_window,
             scan_project_language_stats,
             get_project_language_stats,
+            get_last_active_window,
+            set_last_active_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

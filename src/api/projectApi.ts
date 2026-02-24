@@ -64,3 +64,11 @@ export async function scanProjectLanguageStats(projectId: string) {
 export async function getProjectLanguageStats(projectId: string) {
   return invoke<LanguageStats | null>("get_project_language_stats", { projectId });
 }
+
+export async function getLastActiveWindow() {
+  return invoke<string>("get_last_active_window");
+}
+
+export async function setLastActiveWindow(windowId: string) {
+  return invoke("set_last_active_window", { windowId });
+}

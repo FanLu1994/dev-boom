@@ -177,7 +177,5 @@ onMounted(async () => {
 .dialog-content {
   max-width: 600px;
   width: 100%;
-  max-height: 80vh;
-  overflow: auto;
 }
 </style>

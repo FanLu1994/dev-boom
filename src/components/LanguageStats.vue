@@ -75,7 +75,7 @@ function handleClose() {
 </script>
 
 <template>
-  <div class="language-stats">
+  <div class="language-stats-panel">
     <div class="stats-header">
       <div class="header-title">
         <IconCode :size="20" />
@@ -100,58 +100,60 @@ function handleClose() {
       </div>
     </div>
 
-    <div v-if="loading" class="stats-loading">
-      <div class="spinner"></div>
-      <p>正在统计语言分布...</p>
-    </div>
-
-    <div v-else-if="!stats" class="stats-empty">
-      <p>暂无语言统计数据</p>
-      <button class="btn primary small" @click="handleRefresh">
-        <IconRefresh :size="16" />
-        开始统计
-      </button>
-    </div>
-
-    <div v-else class="stats-content">
-      <div class="stats-summary">
-        <div class="summary-item">
-          <span class="label">总行数</span>
-          <span class="value">{{ stats.totalLines.toLocaleString() }} 行</span>
-        </div>
-        <div class="summary-item">
-          <span class="label">扫描时间</span>
-          <span class="value">{{ formatDate(stats.scannedAt) }}</span>
-        </div>
+    <div class="stats-scroll-content">
+      <div v-if="loading" class="stats-loading">
+        <div class="spinner"></div>
+        <p>正在统计语言分布...</p>
       </div>
 
-      <div class="language-list">
-        <div
-          v-for="lang in stats.languages"
-          :key="lang.language"
-          class="language-item"
-        >
-          <div class="language-info">
-            <span
-              class="language-dot"
-              :style="{ backgroundColor: languageColor(lang.language) }"
-            ></span>
-            <span class="language-name">{{ lang.language }}</span>
-            <span class="language-meta">{{ lang.files }} 个文件</span>
+      <div v-else-if="!stats" class="stats-empty">
+        <p>暂无语言统计数据</p>
+        <button class="btn primary small" @click="handleRefresh">
+          <IconRefresh :size="16" />
+          开始统计
+        </button>
+      </div>
+
+      <div v-else class="stats-content">
+        <div class="stats-summary">
+          <div class="summary-item">
+            <span class="label">总行数</span>
+            <span class="value">{{ stats.totalLines.toLocaleString() }} 行</span>
           </div>
-          <div class="language-bar-container">
-            <div class="language-bar-bg">
-              <div
-                class="language-bar-fill"
-                :style="{
-                  width: `${lang.percentage}%`,
-                  backgroundColor: languageColor(lang.language)
-                }"
-              ></div>
+          <div class="summary-item">
+            <span class="label">扫描时间</span>
+            <span class="value">{{ formatDate(stats.scannedAt) }}</span>
+          </div>
+        </div>
+
+        <div class="language-list">
+          <div
+            v-for="lang in stats.languages"
+            :key="lang.language"
+            class="language-item"
+          >
+            <div class="language-info">
+              <span
+                class="language-dot"
+                :style="{ backgroundColor: languageColor(lang.language) }"
+              ></span>
+              <span class="language-name">{{ lang.language }}</span>
+              <span class="language-meta">{{ lang.files }} 个文件</span>
             </div>
-            <div class="language-stats">
-              <span class="lines">{{ lang.lines.toLocaleString() }} 行</span>
-              <span class="percentage">{{ lang.percentage.toFixed(1) }}%</span>
+            <div class="language-bar-container">
+              <div class="language-bar-bg">
+                <div
+                  class="language-bar-fill"
+                  :style="{
+                    width: `${lang.percentage}%`,
+                    backgroundColor: languageColor(lang.language)
+                  }"
+                ></div>
+              </div>
+              <div class="language-metrics">
+                <span class="lines">{{ lang.lines.toLocaleString() }} 行</span>
+                <span class="percentage">{{ lang.percentage.toFixed(1) }}%</span>
+              </div>
             </div>
           </div>
         </div>
@@ -161,20 +163,40 @@ function handleClose() {
 </template>
 
 <style scoped>
-.language-stats {
-  background: var(--bg-card);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.language-stats-panel {
+  background: var(--panel-strong);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  max-height: min(80vh, calc(100dvh - 40px));
+  overflow: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+
+.language-stats-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .stats-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 20px 20px 12px;
+  background: var(--panel-strong);
+  border-bottom: 1px solid var(--border-subtle);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+
+.stats-scroll-content {
+  padding: 20px;
 }
 
 .header-title {
@@ -187,7 +209,7 @@ function handleClose() {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--fg);
+  color: var(--text);
 }
 
 .header-actions {
@@ -199,15 +221,15 @@ function handleClose() {
 .stats-empty {
   text-align: center;
   padding: 40px 20px;
-  color: var(--fg-muted);
+  color: var(--text-soft);
 }
 
 .stats-loading .spinner {
   width: 32px;
   height: 32px;
   margin: 0 auto 16px;
-  border: 3px solid var(--border);
-  border-top-color: var(--primary);
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -231,7 +253,7 @@ function handleClose() {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
   padding: 12px;
-  background: var(--bg-secondary);
+  background: var(--chip);
   border-radius: 8px;
 }
 
@@ -243,13 +265,13 @@ function handleClose() {
 
 .summary-item .label {
   font-size: 12px;
-  color: var(--fg-muted);
+  color: var(--text-soft);
 }
 
 .summary-item .value {
   font-size: 14px;
   font-weight: 600;
-  color: var(--fg);
+  color: var(--text);
 }
 
 .language-list {
@@ -263,7 +285,7 @@ function handleClose() {
   flex-direction: column;
   gap: 6px;
   padding: 12px;
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--text-soft) 8%, transparent);
   border-radius: 8px;
   transition: transform 0.2s;
 }
@@ -287,13 +309,13 @@ function handleClose() {
 
 .language-name {
   font-weight: 600;
-  color: var(--fg);
+  color: var(--text);
   font-size: 14px;
 }
 
 .language-meta {
   font-size: 12px;
-  color: var(--fg-muted);
+  color: var(--text-soft);
   margin-left: auto;
 }
 
@@ -305,7 +327,7 @@ function handleClose() {
 
 .language-bar-bg {
   height: 6px;
-  background: var(--border);
+  background: color-mix(in srgb, var(--text-soft) 22%, transparent);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -316,18 +338,18 @@ function handleClose() {
   transition: width 0.3s ease;
 }
 
-.language-stats {
+.language-metrics {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
 }
 
-.language-stats .lines {
-  color: var(--fg-muted);
+.language-metrics .lines {
+  color: var(--text-soft);
 }
 
-.language-stats .percentage {
+.language-metrics .percentage {
   font-weight: 600;
-  color: var(--fg);
+  color: var(--text);
 }
 </style>
